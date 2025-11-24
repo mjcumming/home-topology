@@ -100,4 +100,3 @@ print(f"   ✓ Kitchen occupancy: occupied={state['occupied']}, confidence={stat
 print("\n" + "=" * 60)
 print("Example complete! The kernel is ready for development.")
 print("=" * 60)
-

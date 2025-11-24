@@ -123,4 +123,3 @@ class EngineResult:
 
     next_expiration: datetime | None
     transitions: list[StateTransition] = field(default_factory=list)
-
