@@ -1,0 +1,30 @@
+labels: ["idea"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 💡 Share Your Idea
+        
+        Have an idea for improving home-topology? We'd love to hear it!
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: Describe your idea in detail
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: What problem does this solve? What scenarios would benefit?
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Thoughts
+      description: Any initial thoughts on how this could be implemented?
+

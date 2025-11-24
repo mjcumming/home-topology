@@ -1,0 +1,37 @@
+labels: ["show-and-tell"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🎉 Show and Tell
+        
+        Share something cool you've built with home-topology!
+
+  - type: textarea
+    id: project
+    attributes:
+      label: What Did You Build?
+      description: Tell us about your project
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: How does it work? What modules are you using?
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Snippet (Optional)
+      description: Share relevant code if you'd like
+      render: python
+
+  - type: textarea
+    id: learnings
+    attributes:
+      label: What Did You Learn?
+      description: Any insights or challenges you encountered?
+

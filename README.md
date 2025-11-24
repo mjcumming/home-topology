@@ -1,5 +1,10 @@
 # home-topology
 
+[![CI](https://github.com/mjcumming/home-topology/actions/workflows/ci.yml/badge.svg)](https://github.com/mjcumming/home-topology/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 > A platform-agnostic **home topology kernel** for modeling spaces (Locations), attaching behavior (Modules), and wiring everything together with a location-aware **Event Bus**.
 
 `home-topology` is the structural backbone for smart homes:

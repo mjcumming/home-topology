@@ -1,0 +1,52 @@
+name: Question
+description: Ask a question about using home-topology
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help!
+        
+        **Note:** For general discussions, architecture questions, or open-ended topics, 
+        consider using [GitHub Discussions](https://github.com/mjcumming/home-topology/discussions) instead.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What is your question about?
+      options:
+        - Getting Started
+        - Core Concepts (Location/Bus/Events)
+        - Occupancy Module
+        - Actions Module
+        - Configuration
+        - Integration (Home Assistant, etc.)
+        - Architecture/Design
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any relevant context (what you're trying to achieve, what you've tried, etc.)
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Example
+      description: If applicable, provide relevant code
+      render: python
+

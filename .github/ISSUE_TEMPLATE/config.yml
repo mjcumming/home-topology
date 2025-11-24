@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/mjcumming/home-topology/discussions
+    about: For general questions, ideas, and community discussion
+  - name: Documentation
+    url: https://github.com/mjcumming/home-topology#readme
+    about: Read the documentation and design guides
+
