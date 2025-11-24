@@ -86,11 +86,7 @@ class OccupancyEngine:
 
         if transitions:
             for transition in transitions:
-                prev_state = (
-                    "VACANT"
-                    if not transition.previous_state.is_occupied
-                    else "OCCUPIED"
-                )
+                prev_state = "VACANT" if not transition.previous_state.is_occupied else "OCCUPIED"
                 new_state = "OCCUPIED" if transition.new_state.is_occupied else "VACANT"
                 _LOGGER.info(
                     f"  {transition.location_id}: {prev_state} -> {new_state} "
@@ -129,9 +125,7 @@ class OccupancyEngine:
 
             # Check if timer expired
             if state.occupied_until and state.occupied_until <= now:
-                _LOGGER.info(
-                    f"  {location_id}: Timer expired (was {state.occupied_until})"
-                )
+                _LOGGER.info(f"  {location_id}: Timer expired (was {state.occupied_until})")
 
             # We pass a 'None' event to trigger re-evaluation of the state
             # based purely on time and holds. This will also handle FOLLOW_PARENT
@@ -140,15 +134,9 @@ class OccupancyEngine:
 
         if transitions:
             for transition in transitions:
-                prev_state = (
-                    "VACANT"
-                    if not transition.previous_state.is_occupied
-                    else "OCCUPIED"
-                )
+                prev_state = "VACANT" if not transition.previous_state.is_occupied else "OCCUPIED"
                 new_state = "OCCUPIED" if transition.new_state.is_occupied else "VACANT"
-                _LOGGER.info(
-                    f"  {transition.location_id}: {prev_state} -> {new_state} (timeout)"
-                )
+                _LOGGER.info(f"  {transition.location_id}: {prev_state} -> {new_state} (timeout)")
 
         return EngineResult(
             next_expiration=self._calculate_next_expiration(now),
@@ -201,9 +189,7 @@ class OccupancyEngine:
                     # Pass identity up if needed
                     occupant_id=None,  # Could merge identities here if needed
                 )
-                self._process_location_update(
-                    config.parent_id, parent_event, now, transitions
-                )
+                self._process_location_update(config.parent_id, parent_event, now, transitions)
             else:
                 _LOGGER.debug(
                     f"  {location_id} -> {config.parent_id}: "
@@ -217,8 +203,7 @@ class OccupancyEngine:
                 child_config = self.configs[child_id]
                 if child_config.occupancy_strategy == OccupancyStrategy.FOLLOW_PARENT:
                     _LOGGER.debug(
-                        f"  {location_id} -> {child_id}: "
-                        f"Triggering re-eval (FOLLOW_PARENT)"
+                        f"  {location_id} -> {child_id}: " f"Triggering re-eval (FOLLOW_PARENT)"
                     )
                     # Trigger re-eval of child (with no event, just context update)
                     # This is the "Proactive" approach:
@@ -304,10 +289,7 @@ class OccupancyEngine:
                     timeout_delta = timedelta(minutes=timeout_minutes)
 
                 calculated_expiry = now + timeout_delta
-                if (
-                    next_occupied_until is None
-                    or calculated_expiry > next_occupied_until
-                ):
+                if next_occupied_until is None or calculated_expiry > next_occupied_until:
                     next_occupied_until = calculated_expiry
 
             # 5. Timer Logic (Momentary vs Hold Release vs Propagated)
@@ -321,10 +303,7 @@ class OccupancyEngine:
                 calculated_expiry = now + timeout_delta
 
                 # Extend timer if new > current (or if currently vacant)
-                if (
-                    next_occupied_until is None
-                    or calculated_expiry > next_occupied_until
-                ):
+                if next_occupied_until is None or calculated_expiry > next_occupied_until:
                     next_occupied_until = calculated_expiry
 
             elif event.event_type == EventType.HOLD_END:
@@ -347,10 +326,7 @@ class OccupancyEngine:
                     timeout_delta = timedelta(minutes=timeout_minutes)
 
                 calculated_expiry = now + timeout_delta
-                if (
-                    next_occupied_until is None
-                    or calculated_expiry > next_occupied_until
-                ):
+                if next_occupied_until is None or calculated_expiry > next_occupied_until:
                     next_occupied_until = calculated_expiry
 
         # --- C. Determine Occupancy Status (The Strategy) ---
@@ -558,4 +534,3 @@ class OccupancyEngine:
             else:
                 # Reset to default vacant state
                 self.state[loc_id] = LocationRuntimeState()
-

@@ -12,7 +12,7 @@ from typing import Optional, Dict, List
 class Location:
     """
     A logical space in the home topology.
-    
+
     Attributes:
         id: Unique identifier for this location
         name: Human-readable name
@@ -21,10 +21,10 @@ class Location:
         entity_ids: Platform entity IDs mapped to this location
         modules: Per-module configuration blobs
     """
+
     id: str
     name: str
     parent_id: Optional[str] = None
     ha_area_id: Optional[str] = None
     entity_ids: List[str] = field(default_factory=list)
     modules: Dict[str, Dict] = field(default_factory=dict)
-

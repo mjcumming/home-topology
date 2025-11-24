@@ -5,4 +5,3 @@ Runs automations in response to semantic events.
 """
 
 # Module implementation will go here
-
