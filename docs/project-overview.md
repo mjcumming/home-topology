@@ -174,12 +174,14 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full process.
 | Document | Purpose |
 |----------|---------|
 | **README.md** | Quick start, installation, basic usage |
+| **docs/integration-guide.md** | Complete guide for building platform integrations 🔌⭐ |
 | **DESIGN.md** | Architecture spec, design decisions ⭐ |
 | **CODING-STANDARDS.md** | Code style, patterns, anti-patterns ⭐ |
 | **CONTRIBUTING.md** | Development workflow, PR process ⭐ |
 | **CHANGELOG.md** | Version history, release notes |
 
-**⭐ = Must read before contributing**
+**⭐ = Must read before contributing**  
+**🔌 = Essential for platform integrators**
 
 ---
 

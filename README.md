@@ -223,6 +223,8 @@ In a Home Assistant integration, you'd:
 * Expose module state back as HA entities.
 * Optionally provide a UI to configure modules per location.
 
+> **See the [Integration Guide](./docs/integration-guide.md) for a complete, production-ready Home Assistant integration example.**
+
 ---
 
 ## Relationship to Home Assistant
@@ -240,6 +242,8 @@ A typical HA setup would add:
     * Feed HA events into the Event Bus.
     * Expose module state (e.g., occupancy sensors) back to HA.
     * Provide a UI for Locations and their modules (with an "Unassigned/Inbox" view for entities).
+
+**Building an integration?** See the complete **[Integration Guide](./docs/integration-guide.md)** for step-by-step instructions, patterns, and a full Home Assistant example.
 
 ---
 
@@ -284,6 +288,9 @@ make check
 **📖 Start Here**:
 - **[README.md](./README.md)** - This file (project overview)
 - **[WORK-TRACKING.md](./WORK-TRACKING.md)** ⭐ - Current sprint status, task dashboard
+
+**🔌 Integration**:
+- **[docs/integration-guide.md](./docs/integration-guide.md)** ⭐ - Complete guide for platform integrators (Home Assistant, OpenHAB, etc.)
 
 **📊 Daily Operations**:
 - **[ADR-LOG.md](./ADR-LOG.md)** - Architecture decisions with rationale
