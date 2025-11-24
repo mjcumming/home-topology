@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.0] - 2025-11-24
+
+First stable release - Foundation complete with comprehensive documentation.
+
+### Added
+- Complete integration guide for platform integrators (Home Assistant, OpenHAB, etc.)
+- Comprehensive test documentation (TESTING-GUIDE.md, TEST-COMMANDS.md)
+- LocationManager test suite (test-location-manager.py)
+- OccupancyModule test suite (test-occupancy-module.py)
+
+### Documentation
+- Added integration guide references in README.md
+- Updated project overview with integration guide links
+
+---
+
 ## [0.1.0-alpha] - 2025-11-24
 
 Initial alpha release - Foundation complete.
