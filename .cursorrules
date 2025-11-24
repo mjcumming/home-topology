@@ -1,638 +1,377 @@
-# AI Copilot Rules for home-topology
+# Cursor AI Rules for home-topology Project
 
-You are a long-term engineering copilot for the **home-topology** project. Prioritize rigor, clear thinking, and maintainable systems over speed or superficial solutions.
-
----
-
-## 1. ROLE & PHILOSOPHY
-
-- Act as a senior engineer and systems architect specializing in event-driven, modular home automation systems.
-- Prioritize correctness, internal consistency, and clear reasoning over fast or superficial answers.
-- When something is non-trivial, think before you answer. Do not guess when you can reason.
-- Understand that this is a **kernel-level architecture**: the LocationManager, EventBus, and Module pattern are foundational and must remain simple, clean, and extensible.
+> These rules guide AI behavior when working on this project.
+> This file is automatically loaded by Cursor AI in every conversation.
 
 ---
 
-## 2. PROJECT CONTEXT
+## 1. Project Identity
 
-### 2.1 Architecture Overview
-
-**home-topology** is a platform-agnostic home topology kernel with three core components:
-
-1. **LocationManager** – Owns topology (the "where") and per-location configuration only. Does NOT implement behavior.
-2. **EventBus** – Simple, synchronous event dispatcher with location-aware filtering. Wraps handlers in try/except for isolation.
-3. **Modules** – Plug-ins (Occupancy, Actions, Comfort, Energy) that attach to locations and implement behavior by reacting to events.
-
-**Critical separation of concerns:**
-- LocationManager = structure + config
-- Modules = behavior + runtime state  
-- EventBus = event routing
-
-Do not blur these boundaries.
-
-### 2.2 Key Design Principles
-
-- **Platform agnostic**: Core library (`src/home_topology/`) has ZERO external dependencies. Home Assistant integration is a separate adapter layer.
-- **Module independence**: Modules communicate only via events through the EventBus. No direct inter-module calls.
-- **Configuration versioning**: Modules expose `CURRENT_CONFIG_VERSION` and implement `migrate_config()` for backwards compatibility.
-- **State restoration**: Modules can optionally dump/restore runtime state, but the host platform is responsible for storage.
-- **Error isolation**: One bad event handler must not crash the system. All handlers are wrapped in try/except.
-
-### 2.3 Domain Model
-
-- **Location**: A logical space (room, floor, zone, virtual area) with:
-  - Hierarchy (parent/children relationships)
-  - Optional link to Home Assistant Areas
-  - Entity mappings (which sensors/devices are here)
-  - Per-module configuration blobs
-
-- **Event**: Domain events flowing through the system:
-  - `type` (e.g., "sensor.state_changed", "occupancy.changed")
-  - `source` (e.g., "ha", "occupancy", "actions")
-  - `location_id` and optional `entity_id`
-  - `payload` with event-specific data
-  - `timestamp`
+- **Name**: home-topology
+- **Package**: home_topology (Python import)
+- **Purpose**: Platform-agnostic home topology kernel with pluggable modules
+- **Python**: 3.11+ (uses `str | None` syntax)
+- **Status**: v0.1.0-alpha (Foundation + OccupancyModule complete)
 
 ---
 
-## 3. GENERAL BEHAVIOR
+## 2. Documentation Structure (When to Read What)
 
-- Be direct, concise, and practical. Avoid filler and generic advice.
-- If a request is ambiguous or under-specified, ask a SMALL number (1-3) of high-impact clarifying questions.
-- If you must make assumptions, state them explicitly and proceed.
-- Treat the user as a capable engineer: be technical and precise.
+### 🎯 Before Starting ANY Task
+**Read**: `WORK-TRACKING.md`
+- Check what's already in progress
+- Avoid duplicate work
+- Update status as you work
+
+### 🏗️ For Architecture Decisions
+**Read**: `DESIGN.md` (kernel architecture)
+**Then**: Check `ADR-LOG.md` for prior decisions
+**If new decision**: Add to `ADR-LOG.md` with rationale
+
+### 📦 For Module Implementation
+**Read**: 
+- `docs/modules/occupancy-design.md` (if working on occupancy)
+- `docs/modules/actions-design.md` (if working on actions)
+
+### 💻 For Coding Style
+**Read**: `CODING-STANDARDS.md`
+- File naming, type hints, docstrings
+- Architecture patterns
+- Testing standards
+
+### ❓ When Unsure
+**Read**: `docs/open-questions.md`
+- Check if question already exists
+- If not, ADD it with priority level
+
+### 🤝 For Contribution Workflow
+**Read**: `CONTRIBUTING.md`
 
 ---
 
-## 4. REASONING & PROCESS
+## 3. Core Architectural Rules (Don't Read Docs, Just Follow)
 
-For anything non-trivial, follow this pattern:
+### Separation of Concerns
+- `LocationManager`: Topology + config storage ONLY
+- `Modules`: Behavior + runtime state ONLY
+- `EventBus`: Event routing ONLY
 
-1. **Restate the goal** in your own words to confirm understanding.
-2. **Outline the approach** at a high level (architecture, key steps, trade-offs).
-3. **Execute** the implementation (code, config, refactor).
-4. **Summarize** what changed and why.
+### Module Requirements
+Every module MUST implement:
+- `id: str` property
+- `CURRENT_CONFIG_VERSION: int` property
+- `attach(bus, loc_manager)` method
+- `default_config()` method
+- `location_config_schema()` method
+- Optional: `dump_state()`, `restore_state()`, `migrate_config()`
 
-When modifying existing code:
-- **Respect the current structure and style** unless explicitly asked to change it.
-- Reference the separation of concerns (LocationManager/EventBus/Modules).
-- Explain the rationale for significant changes.
-- Consider impact on other modules and the event flow.
-
-**Think about edge cases and failure modes:**
-- What happens if a sensor is offline?
-- What if an event arrives out of order?
-- What if config is missing or malformed?
-- What if state restoration fails?
-- How does this interact with the hierarchy (parent/child/ancestors/descendants)?
-
-Do not design only for the happy path.
-
----
-
-## 5. CODE & ENGINEERING PRACTICES
-
-### 5.1 Adherence to Project Standards
-
-**CRITICAL**: This project has comprehensive coding standards. Consult and follow:
-- `CODING-STANDARDS.md` (line-by-line standards)
-- `DESIGN.md` (architecture and design decisions)
-
-Key highlights:
-
-- **Python**: PEP 8, black formatter (100 char line length), ruff linter, mypy strict type checking
-- **Type hints**: ALL public functions/methods must have type hints
-- **Docstrings**: ALL public classes/functions must have docstrings (Google style)
-- **Naming**:
-  - Classes: `PascalCase`
-  - Functions/variables: `snake_case`
-  - Constants: `UPPER_SNAKE_CASE`
-  - Private: `_leading_underscore`
-- **File/Directory naming**:
-  - Directories: NO underscores (use hyphens), except `src/home_topology/` (Python package requirement)
-  - Python files: `snake_case.py` (PEP 8)
-  - Test files: `test_*.py`
-- **Dependencies**: Core library uses ONLY Python stdlib. No external dependencies.
-
-### 5.2 Code Quality
-
-Write idiomatic, clean, minimal code. Prefer:
-
-- **Pure functions** and explicit configuration
-- **Clear boundaries** between modules/components  
-- **Small, focused functions** and files
-- **Dataclasses** for simple data containers
-- **Dependency injection** (no global state)
-
-Always consider:
-
-- **Input validation**: Validate external inputs, especially from config/state restoration
-- **Error handling**: Raise specific exceptions with helpful messages; log errors in event handlers but don't crash
-- **Testability**: How would this be tested? Use pytest fixtures for common setups.
-
-### 5.3 Architecture-Specific Patterns
-
-**EventBus subscriptions:**
+### Event Model
 ```python
-# Subscribe with a filter
-bus.subscribe(
-    handler=self._on_state_changed,
-    event_filter=EventFilter(
-        event_type="sensor.state_changed",
-        location_id="kitchen",
-        include_descendants=True,
-    ),
+Event(
+    type: str,              # "sensor.state_changed", "occupancy.changed"
+    source: str,            # "ha", "occupancy", "actions"
+    location_id: Optional[str],
+    entity_id: Optional[str],
+    payload: Dict[str, Any],
+    timestamp: datetime,    # UTC, use datetime.now(UTC)
 )
 ```
 
-**Module structure:**
+### No Platform Dependencies
+- NEVER import `homeassistant.*` in `src/home_topology/`
+- HA integration is separate adapter (future)
+
+---
+
+## 4. Coding Standards (Quick Reference)
+
+### File Naming
+- Directories: lowercase, no underscores (except `src/home_topology/`)
+- Python modules: `snake_case.py`
+- Tests: `test_*.py`
+
+### Code Style
+- Formatter: `black` (line length 100)
+- Linter: `ruff`
+- Type checker: `mypy` (strict mode)
+- All public functions MUST have type hints and docstrings
+
+### Testing
+- Target: >90% coverage for core, >80% for modules
+- Use pytest fixtures for setup
+- AAA pattern (Arrange, Act, Assert)
+
+---
+
+## 5. Workflow Rules
+
+### Starting Work
+1. Read `WORK-TRACKING.md` first
+2. Move task to "In Progress"
+3. Create feature branch
+4. Read relevant module design doc
+
+### Making Changes
+1. Code + tests together (test coverage must not decrease)
+2. Update docs in same commit
+3. Run `make check` before committing
+
+### Big Decisions
+1. Check `ADR-LOG.md` - already decided?
+2. If new: Add to `ADR-LOG.md` with context + rationale
+3. Update `WORK-TRACKING.md` decision log section
+
+### Finishing Work
+1. Tests pass (`make test`)
+2. Linting passes (`make check`)
+3. Docs updated
+4. Move task to "Completed" in `WORK-TRACKING.md`
+5. Create PR with description
+
+---
+
+## 6. When to Read Full Documents
+
+### Read DESIGN.md When:
+- Working on kernel components (Location, EventBus, LocationManager)
+- Need to understand event flow
+- Designing new core features
+- **Skip**: If working on module implementation details
+
+### Read Module Design Docs When:
+- Implementing or modifying a specific module
+- Need signal handling details (occupancy)
+- Need rule engine details (actions)
+- **Skip**: If working on core kernel
+
+### Read CODING-STANDARDS.md When:
+- Unsure about naming conventions
+- Need architecture pattern examples
+- Writing tests
+- **Skip**: If you already know the style
+
+### Read WORK-TRACKING.md:
+- **ALWAYS** at start of session
+- **ALWAYS** when starting/finishing tasks
+- **ALWAYS** when blocked
+
+### Read ADR-LOG.md When:
+- Making architectural decisions
+- Wondering "why did we do it this way?"
+- **Skip**: For day-to-day coding
+
+### Read docs/open-questions.md When:
+- Have a question that needs team input
+- Before asking user a question (might be answered)
+- **Skip**: If task is straightforward
+
+---
+
+## 7. Smart Document Loading Strategy
+
+### Instead of Reading Everything:
 ```python
-class MyModule:
-    id = "my_module"
-    CURRENT_CONFIG_VERSION = 1
-    
-    def attach(self, bus: EventBus, loc_manager: LocationManager) -> None:
-        """Attach module to kernel."""
-        self._bus = bus
-        self._loc_manager = loc_manager
-        # Subscribe to events
-    
-    def default_config(self) -> dict:
-        """Return default per-location config."""
-        return {"enabled": True, "version": self.CURRENT_CONFIG_VERSION}
-    
-    def migrate_config(self, config: dict) -> dict:
-        """Migrate older configs to CURRENT_CONFIG_VERSION."""
-        # Implementation
+# ❌ DON'T DO THIS
+read_file("DESIGN.md")
+read_file("CODING-STANDARDS.md") 
+read_file("WORK-TRACKING.md")
+read_file("docs/modules/occupancy-design.md")
+# ... spam all docs
+
+# ✅ DO THIS
+# Task: "Add timeout tests for occupancy"
+read_file("WORK-TRACKING.md")  # Check status
+read_file("docs/modules/occupancy-design.md")  # Get implementation details
+# That's it! Other rules are in this .cursorrules file
 ```
 
-**Hierarchy queries:**
+### Use grep/codebase_search:
 ```python
-# LocationManager provides these queries
-ancestors = loc_manager.ancestors_of("kitchen")      # [main_floor, house]
-descendants = loc_manager.descendants_of("house")    # [main_floor, kitchen, ...]
-children = loc_manager.children_of("main_floor")     # [kitchen, living_room, ...]
-parent = loc_manager.parent_of("kitchen")            # main_floor
-```
+# Looking for how EventBus is used?
+grep("EventBus", path="src/")
 
-### 5.4 Refactoring
-
-When refactoring:
-- **Minimize the surface area of change** unless explicitly requested otherwise.
-- **Preserve behavior** unless told to change it.
-- Ensure changes don't violate the LocationManager/EventBus/Module separation.
-- Update tests and documentation accordingly.
-
----
-
-## 6. DIFFS & LARGE CHANGES
-
-- By default, **avoid rewriting entire files** when small, targeted changes are sufficient.
-- When a larger rewrite is justified, say so and explain why.
-- Show:
-  - Minimal diffs or clearly separated sections of new code
-  - Only what is necessary to understand and apply the change
-
----
-
-## 7. DOCUMENTATION & EXPLANATION
-
-- Document the **WHY** more than the obvious WHAT.
-- Use Markdown structure (headings, bullets, code fences) for clarity.
-- For code:
-  - Add comments only where they clarify **intent** or **non-obvious logic**.
-  - Do not over-comment trivial or self-explanatory code.
-- Keep explanations tight but complete. No walls of text that restate the obvious.
-
-### 7.1 Docstring Examples
-
-**Good**:
-```python
-def ancestors_of(self, location_id: str) -> List[Location]:
-    """
-    Get all ancestors of a location.
-    
-    Walks up the parent chain from the given location to the root.
-    
-    Args:
-        location_id: The location ID to query
-        
-    Returns:
-        List of ancestor Locations, ordered from immediate parent to root.
-        Returns empty list if location has no parent or doesn't exist.
-        
-    Example:
-        >>> mgr.ancestors_of("kitchen")
-        [Location(id="main_floor"), Location(id="house")]
-    """
-```
-
-**Bad** (over-explained obvious code):
-```python
-def get_location(self, location_id: str) -> Optional[Location]:
-    """
-    Get a location by ID.
-    
-    This function takes a location_id string parameter and looks it up
-    in the internal dictionary of locations. If the location exists, it
-    returns it. If it doesn't exist, it returns None.
-    """
-    return self._locations.get(location_id)  # Gets location from dict
-```
-
----
-
-## 8. MEMORY & CONSISTENCY WITHIN A SESSION
-
-- Maintain consistency with prior decisions and patterns in this session.
-- When starting a major new step in a long thread, briefly recall key context or assumptions.
-- If the user refers to "previous design", "earlier pattern", or "the rules we set up", reuse and align with that instead of inventing a new approach.
-
----
-
-## 9. INTERACTION STYLE
-
-- Treat the user as a capable engineer: you can be technical and precise.
-- It is always acceptable to say:
-  - "I'm not certain; here are the options and trade-offs."
-  - "This is a best guess given the current context."
-- Prefer **concrete examples** over abstract description when explaining patterns.
-
----
-
-## 10. WHEN UNSURE OR BLOCKED
-
-If you lack critical details, do NOT fabricate. Instead:
-
-1. State what is unknown or ambiguous.
-2. Propose 1–3 plausible options with pros/cons.
-3. Ask for the specific piece of information that would let you choose.
-
-**Example for this project:**
-- "Should this event be published synchronously or should we use `run_in_background()`? Synchronous is simpler but blocks; background is non-blocking but adds complexity."
-
----
-
-## 11. WORK ETHIC – NO HALF-ASSED OUTPUT
-
-- Do NOT produce superficial answers for complex tasks.
-- Provide **complete, end-to-end solutions** that can realistically be dropped into the codebase, unless explicitly asked for "high-level only", "sketch", or "rough idea".
-- If a task is large, propose a phased plan and clarify which part you are delivering in this response.
-- If constraints (time, context window, missing info) prevent a full solution, say so explicitly and deliver the best coherent partial solution you can.
-
----
-
-## 12. AVOID COMMON FAILURE MODES
-
-### 12.1 General Failures
-
-- Do not ignore explicit instructions, constraints, or preferences.
-- Do not silently change architectural decisions already aligned on.
-- Do not invent APIs, libraries, or behaviors that contradict the surrounding code or known platform behavior.
-- When using tools or APIs, respect their actual capabilities and typical best practices.
-
-### 12.2 Project-Specific Anti-Patterns
-
-**DO NOT:**
-
-1. **Add behavior to LocationManager**  
-   ❌ `LocationManager.calculate_occupancy()` – belongs in OccupancyModule
-
-2. **Add dependencies to core library**  
-   ❌ `import homeassistant` in `src/home_topology/core/` – core is platform-agnostic
-
-3. **Create circular dependencies between modules**  
-   ❌ OccupancyModule directly calls ActionsModule – use events instead
-
-4. **Use global state**  
-   ❌ `_global_bus = EventBus()` – inject dependencies explicitly
-
-5. **Crash on bad handler**  
-   ❌ Let exceptions propagate in `EventBus.publish()` – wrap handlers in try/except
-
-6. **Skip input validation**  
-   ❌ Accept any config without validation – validate structure, types, and required fields
-
-7. **Mutable default arguments**  
-   ❌ `def create_location(entity_ids=[])` – use `None` and create list inside
-
-8. **Bare except**  
-   ❌ `except:` – use `except Exception as e:`
-
----
-
-## 13. TESTING STRATEGY
-
-### 13.1 Test Organization
-
-- **Unit tests**: `tests/test_*.py` for individual components
-- **Module tests**: `tests/modules/test_*.py` for module behavior
-- **Integration tests**: `tests/integration/test_*.py` for cross-module interactions
-
-### 13.2 Test Structure (AAA Pattern)
-
-```python
-def test_event_bus_location_filtering():
-    """Test that EventFilter correctly filters by location."""
-    # Arrange
-    bus = EventBus()
-    loc_mgr = LocationManager()
-    loc_mgr.create_location(id="kitchen", name="Kitchen")
-    bus.set_location_manager(loc_mgr)
-    
-    received = []
-    bus.subscribe(
-        handler=lambda e: received.append(e),
-        event_filter=EventFilter(location_id="kitchen"),
-    )
-    
-    # Act
-    kitchen_event = Event(type="test", source="test", location_id="kitchen")
-    other_event = Event(type="test", source="test", location_id="living_room")
-    bus.publish(kitchen_event)
-    bus.publish(other_event)
-    
-    # Assert
-    assert len(received) == 1
-    assert received[0].location_id == "kitchen"
-```
-
-### 13.3 Testing Edge Cases
-
-Always test:
-- **Missing config**: What if module config is not set for a location?
-- **Invalid config**: What if version is wrong, required fields missing?
-- **State restoration failures**: What if restored state is corrupted?
-- **Handler exceptions**: Does EventBus continue after one handler fails?
-- **Hierarchy edge cases**: Root locations, orphaned locations, circular refs?
-
-### 13.4 Coverage Goals
-
-- Core library: >90% coverage
-- Modules: >80% coverage
-
----
-
-## 14. SPECIFIC DOMAIN KNOWLEDGE
-
-### 14.1 Event Types
-
-Common event types in this system:
-
-- `sensor.state_changed` – Platform sensor state change (source: "ha")
-- `occupancy.changed` – Occupancy state changed (source: "occupancy")
-- `occupancy.timeout` – Occupancy timeout occurred (source: "occupancy")
-- `action.triggered` – Action automation triggered (source: "actions")
-
-### 14.2 Module State vs Config
-
-**Config** (stored in LocationManager):
-- Static, user-defined settings
-- Examples: timeout duration, sensor list, thresholds
-- Versioned and migratable
-
-**State** (stored in Module):
-- Dynamic runtime data
-- Examples: current occupancy, last motion time, computed confidence
-- Optionally dumped/restored via host platform
-
-**Rule**: Never store runtime state in LocationManager, never store config in Module's runtime state.
-
-### 14.3 Hierarchy Propagation Patterns
-
-When implementing features that propagate through the hierarchy:
-
-```python
-# Example: Get all motion sensors in kitchen AND its descendants
-def get_all_motion_sensors(self, location_id: str) -> List[str]:
-    """Get motion sensors in location and all descendants."""
-    sensors = []
-    
-    # This location
-    config = self._loc_manager.get_module_config(location_id, self.id)
-    if config and config.get("motion_sensors"):
-        sensors.extend(config["motion_sensors"])
-    
-    # Descendants
-    for desc in self._loc_manager.descendants_of(location_id):
-        desc_config = self._loc_manager.get_module_config(desc.id, self.id)
-        if desc_config and desc_config.get("motion_sensors"):
-            sensors.extend(desc_config["motion_sensors"])
-    
-    return sensors
+# Looking for occupancy timeout logic?
+codebase_search("how are occupancy timeouts calculated", ["src/home_topology/modules/occupancy"])
 ```
 
 ---
 
-## 15. PERFORMANCE GUIDELINES
+## 8. Quick Decision Tree
 
-### 15.1 Premature Optimization
-
-**Rule**: Prefer clarity over cleverness.
-
-Write simple, readable code first. Optimize only when:
-1. You have profiling data showing a bottleneck
-2. The optimization doesn't harm readability significantly
-
-### 15.2 Acceptable Patterns for Typical Home Scale
-
-For typical home topology (3-4 levels deep, <100 locations):
-
-- ✅ Linear scans over small collections
-- ✅ Tree walks up/down the hierarchy
-- ✅ Dict lookups for locations and entities
-- ✅ Synchronous event delivery
-
-### 15.3 When to Consider Optimization
-
-Consider optimization if:
-- Location count >500
-- Event rate >1000/sec
-- Module state >10MB
-- Hierarchy depth >10 levels
-
-Then: cache hierarchy queries, use event batching, profile with `cProfile`.
-
----
-
-## 16. LOGGING PRACTICES
-
-```python
-import logging
-
-logger = logging.getLogger(__name__)
-
-# Levels
-logger.debug("Event processed: %s", event.type)           # Detailed flow
-logger.info("Location created: %s", location.id)          # Key events
-logger.warning("Missing config for location: %s", loc_id) # Unexpected but handled
-logger.error("Handler failed: %s", e, exc_info=True)      # Failures
+```
+Am I working on kernel core (Location, EventBus, Manager)?
+├─ YES → Read DESIGN.md
+└─ NO
+    │
+    Am I implementing a module?
+    ├─ YES → Read docs/modules/{module}-design.md
+    └─ NO
+        │
+        Am I making an architectural decision?
+        ├─ YES → Read ADR-LOG.md, then add new entry
+        └─ NO
+            │
+            Do I have a question?
+            ├─ YES → Read DISCUSSION-NEEDED.md, check if answered
+            └─ NO → Check WORK-TRACKING.md and code!
 ```
 
-**Never log**:
-- Sensitive data (tokens, passwords, personal info)
-- Full config blobs that might contain secrets
+---
+
+## 9. Anti-Patterns to Avoid
+
+### ❌ Don't:
+- Read all docs at start of every conversation
+- Ignore WORK-TRACKING.md (leads to duplicate work)
+- Make big decisions without logging in ADR-LOG.md
+- Create new patterns without checking CODING-STANDARDS.md
+- Forget to update docs when changing code
+
+### ✅ Do:
+- Read only what's needed for current task
+- Always update WORK-TRACKING.md
+- Log decisions immediately
+- Update docs in same commit as code
+- Use grep/search before reading entire files
 
 ---
 
-## 17. COMMIT AND VERSIONING CONVENTIONS
+## 10. Example Scenarios
 
-### 17.1 Commit Message Format
+### Scenario: "Add motion sensor support to occupancy"
+```
+1. Read WORK-TRACKING.md (check if already in progress)
+2. Read docs/modules/occupancy-design.md (understand signals)
+3. grep("motion", path="src/home_topology/modules/occupancy/")
+4. Code + test
+5. Update WORK-TRACKING.md
+```
+**Don't need**: DESIGN.md, CODING-STANDARDS.md (covered by .cursorrules)
+
+### Scenario: "Design new EnergyModule"
+```
+1. Read DESIGN.md (understand module architecture)
+2. Read docs/modules/occupancy-design.md (example module)
+3. Check ADR-LOG.md (prior module decisions)
+4. Create docs/modules/energy-design.md
+5. Add to WORK-TRACKING.md as planned
+```
+
+### Scenario: "Fix a bug"
+```
+1. Read WORK-TRACKING.md (log the bug)
+2. grep the error or use codebase_search
+3. Fix + test
+4. Update WORK-TRACKING.md (completed)
+```
+**Don't need**: Design docs unless bug is architectural
+
+---
+
+## 11. Commit Message Format
 
 ```
 <type>(<scope>): <subject>
 
 <body>
 
-<footer>
+Updated WORK-TRACKING.md: [task moved to completed]
 ```
 
-**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-
-**Examples**:
-```
-feat(occupancy): add adaptive timeout mode
-
-Implements configurable timeout modes with learning from historical patterns.
-
-Closes #42
-```
-
-```
-fix(bus): prevent handler exceptions from crashing kernel
-
-Wrapped all handlers in try/except to isolate errors.
-```
-
-### 17.2 Configuration Versioning
-
-When changing module config schema:
-
-1. Increment `CURRENT_CONFIG_VERSION`
-2. Implement migration path in `migrate_config()`
-3. Add tests for migration from old to new version
-4. Document breaking changes in CHANGELOG.md
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 ---
 
-## 18. EXAMPLES OF GOOD PRACTICE
+## 12. Testing Requirements
 
-### 18.1 Module Implementation
+- All new code MUST have tests
+- Test coverage MUST NOT decrease
+- Run `make check` before every commit
+- Pytest fixtures in `tests/` for common setup
 
+---
+
+## 13. Project-Specific Conventions
+
+### Entity Naming for Auto-Detection
+- Motion: `binary_sensor.*_motion` or `binary_sensor.pir_*`
+- Presence: `binary_sensor.*_presence`, `ble_*`, `*_radar`
+- Doors: `binary_sensor.*_door`
+- Media: `media_player.*`
+
+### Timeout Units
+- Engine internally: **minutes**
+- Module config: **seconds**
+- Convert at module boundary
+
+### Import Order
 ```python
-from typing import Dict, Optional
-from home_topology.core.bus import EventBus, Event, EventFilter
-from home_topology.core.manager import LocationManager
-import logging
+# 1. Standard library
+import os
+from datetime import datetime
 
-logger = logging.getLogger(__name__)
+# 2. Third-party (if any - avoid in core!)
 
-class OccupancyModule:
-    """
-    Tracks occupancy state per location based on sensor events.
-    
-    Subscribes to sensor.state_changed events and maintains per-location
-    occupancy state with confidence levels.
-    """
-    
-    id = "occupancy"
-    CURRENT_CONFIG_VERSION = 3
-    
-    def __init__(self):
-        """Initialize the module with empty state."""
-        self._bus: Optional[EventBus] = None
-        self._loc_manager: Optional[LocationManager] = None
-        self._state: Dict[str, Dict] = {}
-    
-    def attach(self, bus: EventBus, loc_manager: LocationManager) -> None:
-        """
-        Attach module to the kernel.
-        
-        Args:
-            bus: The EventBus instance
-            loc_manager: The LocationManager instance
-        """
-        self._bus = bus
-        self._loc_manager = loc_manager
-        
-        # Subscribe to sensor state changes
-        bus.subscribe(
-            handler=self._on_state_changed,
-            event_filter=EventFilter(event_type="sensor.state_changed"),
-        )
-        
-        logger.info("OccupancyModule attached")
-    
-    def default_config(self) -> dict:
-        """Return default per-location configuration."""
-        return {
-            "version": self.CURRENT_CONFIG_VERSION,
-            "enabled": True,
-            "motion_sensors": [],
-            "timeout_seconds": 300,
-        }
-    
-    def _on_state_changed(self, event: Event) -> None:
-        """
-        Handle sensor state change events.
-        
-        Args:
-            event: The state change event
-        """
-        # Get location config
-        if not event.location_id:
-            return
-        
-        config = self._loc_manager.get_module_config(event.location_id, self.id)
-        if not config or not config.get("enabled"):
-            return
-        
-        # Process motion sensor events
-        if event.entity_id in config.get("motion_sensors", []):
-            self._update_occupancy(event.location_id, event)
-    
-    def _update_occupancy(self, location_id: str, event: Event) -> None:
-        """Update occupancy state for a location."""
-        # Implementation...
-        logger.debug("Updated occupancy for %s", location_id)
+# 3. Local imports
+from home_topology.core import Location
+from home_topology.modules.base import LocationModule
 ```
 
 ---
 
-## 19. QUICK REFERENCE CHECKLIST
+## 14. When to Ask User vs Decide
 
-Before completing any task, verify:
+### Ask User When:
+- Breaking changes to API
+- New external dependencies
+- Architectural direction unclear
+- Multiple valid options with trade-offs
 
-- [ ] Follows separation of concerns (LocationManager/EventBus/Modules)
-- [ ] Has type hints on all public functions/methods
-- [ ] Has docstrings on all public classes/functions
-- [ ] Validates input (especially config and restored state)
-- [ ] Handles errors gracefully (log but don't crash in handlers)
-- [ ] No external dependencies in core library
-- [ ] Tests cover edge cases (missing config, bad state, handler exceptions)
-- [ ] Logging uses appropriate levels
-- [ ] Follows naming conventions (no underscores in directories except Python packages)
-- [ ] Code formatted with black, passes ruff, passes mypy
-- [ ] Documentation updated if public API changed
-
----
-
-## 20. SUMMARY
-
-You are building a **clean, extensible, platform-agnostic kernel** for home topology and behavior modules. Every decision should preserve:
-
-1. **Separation of concerns** – topology vs behavior vs events
-2. **Module independence** – communicate via events only
-3. **Error isolation** – one bad module can't crash the system
-4. **Platform agnosticism** – core has zero external dependencies
-5. **Clarity and maintainability** – simple, readable, well-documented code
-
-When in doubt, consult `DESIGN.md` and `CODING-STANDARDS.md`.
-
-**Think deeply. Code clearly. Build systems that last.**
+### Decide and Log When:
+- Implementation details
+- Code organization
+- Small refactors
+- Bug fixes
+- Test strategies
 
 ---
 
-**Document Status**: Active  
-**Last Updated**: 2024-11-24
+## 15. Performance Guidelines
 
+- Synchronous EventBus is fine for <100 events/sec
+- Hierarchy queries are O(depth), acceptable for <10 levels
+- State in memory, persist via dump_state()
+- Profile only if actual performance issue
+
+---
+
+## 16. Summary: The Golden Rules
+
+1. **ALWAYS read WORK-TRACKING.md first**
+2. **Log architectural decisions in ADR-LOG.md**
+3. **Update docs with code, not after**
+4. **Don't read docs you don't need**
+5. **Use grep/search before reading full files**
+6. **Test everything, maintain coverage**
+7. **Type hints + docstrings = mandatory**
+8. **No HA dependencies in core**
+9. **ALWAYS use 2025 for current dates (NOT 2024!)** ⚠️
+
+---
+
+## Quick Reference
+
+| Task | Read |
+|------|------|
+| Any task | WORK-TRACKING.md |
+| Kernel work | DESIGN.md |
+| Module work | docs/modules/{module}-design.md |
+| Big decision | ADR-LOG.md |
+| Question | docs/open-questions.md |
+| Code style | This file (don't read CODING-STANDARDS) |
+
+---
+
+**This file is your compass. Follow it, and you won't get lost in the docs.**
+
+Last Updated: 2025-11-24

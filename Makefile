@@ -86,7 +86,11 @@ build: clean
 	python3 -m build
 
 # Pre-commit hook simulation
-pre-commit: format lint typecheck test
+pre-commit: format lint typecheck test check-dates
 	@echo ""
 	@echo "✅ Ready to commit!"
+
+# Check for date errors in docs
+check-dates:
+	@./scripts/check-dates.sh
 

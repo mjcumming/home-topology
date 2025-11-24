@@ -3,7 +3,7 @@
 > This document defines the architectural decisions, core principles, and implementation rules for the home-topology kernel.
 
 **Status**: Active  
-**Last Updated**: 2024-11-24
+**Last Updated**: 2025-11-24
 
 ---
 
@@ -587,4 +587,4 @@ Host platform (HA) could manage multiple kernel instances.
 ---
 
 **Document Status**: Active  
-**Last Updated**: 2024-11-24
+**Last Updated**: 2025-11-24

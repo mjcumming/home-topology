@@ -1,9 +1,8 @@
-"""Data models for the occupancy module (from occupancy_manager).
+"""Data models for the occupancy module.
 
 This module defines the core data structures used throughout the occupancy system.
 All state classes are frozen (immutable) to support functional programming.
 
-Original source: https://github.com/mjcumming/occupancy_manager
 Licensed under MIT License
 """
 

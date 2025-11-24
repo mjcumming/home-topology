@@ -3,7 +3,6 @@
 This module contains the pure business logic. It accepts events and time,
 and returns state transitions and scheduling instructions.
 
-Original source: https://github.com/mjcumming/occupancy_manager
 Licensed under MIT License
 """
 

@@ -782,5 +782,5 @@ Standards evolve. Propose changes via:
 ---
 
 **Document Status**: Active  
-**Last Updated**: 2024-11-24
+**Last Updated**: 2025-11-24
 

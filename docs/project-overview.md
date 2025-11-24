@@ -370,5 +370,5 @@ TBD (likely MIT or Apache-2.0)
 ---
 
 **Document Status**: Living Document  
-**Last Updated**: 2024-11-24
+**Last Updated**: 2025-11-24
 

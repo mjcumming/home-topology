@@ -281,17 +281,28 @@ make check
 
 ### Documentation
 
-**Architecture**:
+**📖 Start Here**:
+- **[README.md](./README.md)** - This file (project overview)
+- **[WORK-TRACKING.md](./WORK-TRACKING.md)** ⭐ - Current sprint status, task dashboard
+
+**📊 Daily Operations**:
+- **[ADR-LOG.md](./ADR-LOG.md)** - Architecture decisions with rationale
+- **[docs/open-questions.md](./docs/open-questions.md)** - Open questions needing answers
+
+**🏗️ Architecture**:
 - **[DESIGN.md](./DESIGN.md)** - Complete kernel architecture specification
 - **[CODING-STANDARDS.md](./CODING-STANDARDS.md)** - Code style and patterns
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - How to contribute
 
-**Modules**:
+**📦 Modules**:
 - **[docs/modules/occupancy-design.md](./docs/modules/occupancy-design.md)** - Occupancy module specification
+- **[docs/modules/occupancy-integration.md](./docs/modules/occupancy-integration.md)** - Occupancy integration status
 - **[docs/modules/actions-design.md](./docs/modules/actions-design.md)** - Actions module specification
 
-**Reference**:
-- **[docs/project-overview.md](./docs/project-overview.md)** - Project overview and getting started
+**📚 Reference**:
+- **[docs/project-overview.md](./docs/project-overview.md)** - Detailed project guide
+- **[docs/ai-guide.md](./docs/ai-guide.md)** - AI-assisted development guide
+- **[CHANGELOG.md](./CHANGELOG.md)** - Version history
 
 ### Development Commands
 

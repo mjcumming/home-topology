@@ -321,7 +321,7 @@ Brief description of the issue.
 
 **Logs**:
 ```
-2024-11-24 10:00:00 ERROR ... 
+2025-11-24 10:00:00 ERROR ... 
 ```
 ```
 
@@ -484,5 +484,5 @@ Open an issue or discussion - we're happy to help!
 ---
 
 **Document Status**: Active  
-**Last Updated**: 2024-11-24
+**Last Updated**: 2025-11-24
 
