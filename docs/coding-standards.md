@@ -522,9 +522,9 @@ Each module must have:
 ### 8.2 Documentation Files
 
 - `README.md`: Overview, installation, quick example
-- `DESIGN.md`: Architecture, design decisions (this file)
-- `CODING-STANDARDS.md`: Coding standards (this file)
-- `CONTRIBUTING.md`: How to contribute (coming next)
+- `docs/architecture.md`: Architecture, design decisions
+- `docs/coding-standards.md`: Coding standards (this file)
+- `CONTRIBUTING.md`: How to contribute
 - `CHANGELOG.md`: Version history and release notes
 
 ### 8.3 Code Examples

@@ -29,11 +29,8 @@ def location_manager():
             config={
                 "version": 1,
                 "enabled": True,
-                "timeouts": {
-                    "default": 600,  # 10 min
-                    "motion": 300,  # 5 min
-                    "presence": 600,
-                },
+                "default_timeout": 300,  # 5 min
+                "hold_release_timeout": 120,  # 2 min
             },
         )
 
@@ -68,7 +65,6 @@ def test_module_attachment(occupancy_module, location_manager):
         state = occupancy_module.get_location_state(loc_id)
         assert state is not None
         assert state["occupied"] is False
-        assert state["confidence"] == 0.0
 
 
 def test_motion_sensor_triggers_occupancy(event_bus, occupancy_module, location_manager):
@@ -79,7 +75,7 @@ def test_motion_sensor_triggers_occupancy(event_bus, occupancy_module, location_
     def capture_occupancy_events(event: Event):
         emitted_events.append(event)
 
-    event_bus.subscribe(capture_occupancy_events, event_filter=None)  # Capture all events
+    event_bus.subscribe(capture_occupancy_events, event_filter=None)
 
     # Send motion sensor event (off → on)
     event_bus.publish(
@@ -102,7 +98,6 @@ def test_motion_sensor_triggers_occupancy(event_bus, occupancy_module, location_
     # Kitchen should be occupied
     occ_event = next(e for e in occ_events if e.location_id == "kitchen")
     assert occ_event.payload["occupied"] is True
-    assert occ_event.payload["confidence"] > 0.0
     assert occ_event.payload["previous_occupied"] is False
 
     # Check state directly
@@ -212,63 +207,14 @@ def test_state_persistence(event_bus, occupancy_module, location_manager):
     assert restored_state["occupied"] is True
 
 
-def test_timeout_expiration(event_bus, occupancy_module, location_manager):
-    """Test that occupancy expires after timeout."""
-
-    # Set very short timeout for testing (1 second)
-    location_manager.set_module_config(
-        location_id="kitchen",
-        module_id="occupancy",
-        config={
-            "version": 1,
-            "enabled": True,
-            "timeouts": {
-                "motion": 1,  # 1 second (converted to minutes in engine)
-            },
-        },
-    )
-
-    # Recreate module with new config
-    occupancy_module = OccupancyModule()
-    occupancy_module.attach(event_bus, location_manager)
-
-    emitted_events = []
-
-    def capture_events(event: Event):
-        if event.type == "occupancy.changed":
-            emitted_events.append(event)
-
-    event_bus.subscribe(capture_events)
-
-    # Trigger motion
-    event_bus.publish(
-        Event(
-            type="sensor.state_changed",
-            source="ha",
-            entity_id="binary_sensor.kitchen_motion",
-            payload={"old_state": "off", "new_state": "on"},
-            timestamp=datetime.now(UTC),
-        )
-    )
-
-    # Should be occupied
-    assert occupancy_module.get_location_state("kitchen")["occupied"] is True
-    emitted_events.clear()
-
-    # Wait for timeout (note: engine uses minutes, so 1 min = 60 seconds)
-    # For real testing we'd need to mock time or use shorter intervals
-    # This is a placeholder showing the test structure
-
-
 def test_default_config(occupancy_module):
     """Test default configuration."""
     config = occupancy_module.default_config()
 
     assert config["version"] == 1
     assert config["enabled"] is True
-    assert "timeouts" in config
-    assert config["timeouts"]["motion"] == 300  # seconds
-    assert config["timeouts"]["presence"] == 600
+    assert config["default_timeout"] == 300  # 5 minutes
+    assert config["hold_release_timeout"] == 120  # 2 minutes
 
 
 def test_config_schema(occupancy_module):
@@ -278,10 +224,35 @@ def test_config_schema(occupancy_module):
     assert schema["type"] == "object"
     assert "properties" in schema
     assert "enabled" in schema["properties"]
-    assert "timeouts" in schema["properties"]
+    assert "default_timeout" in schema["properties"]
+    assert "hold_release_timeout" in schema["properties"]
 
-    # Check timeout properties
-    timeout_props = schema["properties"]["timeouts"]["properties"]
-    assert "motion" in timeout_props
-    assert "presence" in timeout_props
-    assert timeout_props["motion"]["minimum"] == 30
+
+def test_lock_state_tracking(occupancy_module):
+    """Test that lock state is tracked correctly."""
+    now = datetime.now(UTC)
+
+    # Occupy and lock
+    occupancy_module.trigger("kitchen", "motion", now=now)
+    occupancy_module.lock("kitchen", "automation_a", now=now)
+    occupancy_module.lock("kitchen", "automation_b", now=now)
+
+    state = occupancy_module.get_location_state("kitchen")
+    assert state["is_locked"] is True
+    assert "automation_a" in state["locked_by"]
+    assert "automation_b" in state["locked_by"]
+
+    # Unlock one
+    occupancy_module.unlock("kitchen", "automation_a", now=now)
+
+    state2 = occupancy_module.get_location_state("kitchen")
+    assert state2["is_locked"] is True  # Still locked
+    assert "automation_a" not in state2["locked_by"]
+    assert "automation_b" in state2["locked_by"]
+
+    # Unlock all
+    occupancy_module.unlock_all("kitchen", now=now)
+
+    state3 = occupancy_module.get_location_state("kitchen")
+    assert state3["is_locked"] is False
+    assert len(state3["locked_by"]) == 0

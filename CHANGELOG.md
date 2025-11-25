@@ -17,12 +17,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1-alpha] - 2025-11-25
+
+Quality improvements and comprehensive test coverage.
+
+### Added
+- Advanced occupancy tests (88 tests total, comprehensive suite)
+- `get_effective_timeout()` - returns true timeout considering all descendants
+- `vacate_area()` - cascading vacate command for location subtrees
+- Effective timeout tests
+- Vacate area (cascading) tests
+
+### Changed
+- Replaced `datetime.UTC` with `datetime.timezone.utc` for Python 3.10+ compatibility
+- Added type annotations throughout codebase
+- Fixed all mypy type errors (22 issues resolved)
+- Fixed all ruff linting issues (13 issues resolved)
+- Removed unused imports and variables
+
+### Documentation
+- Added UI design specification (`docs/ui/ui-design.md`)
+- Added project status tracking (`docs/project-status.md`)
+- Added architecture documentation (`docs/architecture.md`)
+- Added testing guides (`docs/testing/`)
+- Added occupancy design decisions (`docs/modules/occupancy-design-decisions.md`)
+- Reorganized documentation structure
+
+---
+
 ## [0.1.0] - 2025-11-24
 
 First stable release - Foundation complete with comprehensive documentation.
 
 ### Added
-- Complete integration guide for platform integrators (Home Assistant, OpenHAB, etc.)
+- Complete integration guide for platform integrators
 - Comprehensive test documentation (TESTING-GUIDE.md, TEST-COMMANDS.md)
 - LocationManager test suite (test-location-manager.py)
 - OccupancyModule test suite (test-occupancy-module.py)
@@ -77,8 +105,8 @@ Initial alpha release - Foundation complete.
 - docs/modules/occupancy-design.md - Occupancy specification
 - docs/modules/occupancy-integration.md - Integration status
 - docs/modules/actions-design.md - Actions specification
-- docs/ai-guide.md - AI-assisted development guide
-- docs/open-questions.md - Open questions and discussions
+- docs/ai-development-guide.md - AI-assisted development guide
+- docs/decisions-pending.md - Pending decisions and discussion topics
 
 ### Development Infrastructure (Complete ✅)
 - Makefile with development commands

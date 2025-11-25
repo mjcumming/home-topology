@@ -10,14 +10,15 @@
 
 1. [Quick Start](#quick-start)
 2. [Core Concepts](#core-concepts)
-3. [Initialization Sequence](#initialization-sequence)
-4. [Event Translation](#event-translation)
-5. [State Exposure](#state-exposure)
-6. [Configuration Management](#configuration-management)
-7. [State Persistence](#state-persistence)
-8. [Timeout Management](#timeout-management)
-9. [Best Practices](#best-practices)
-10. [Complete Home Assistant Example](#complete-home-assistant-example)
+3. [Location Types (Your Responsibility)](#location-types-your-responsibility)
+4. [Initialization Sequence](#initialization-sequence)
+5. [Event Translation](#event-translation)
+6. [State Exposure](#state-exposure)
+7. [Configuration Management](#configuration-management)
+8. [State Persistence](#state-persistence)
+9. [Timeout Management](#timeout-management)
+10. [Best Practices](#best-practices)
+11. [Complete Home Assistant Example](#complete-home-assistant-example)
 
 ---
 
@@ -191,6 +192,103 @@ state = occupancy.get_location_state("kitchen")
 state_dump = occupancy.dump_state()
 occupancy.restore_state(state_dump)
 ```
+
+---
+
+## Location Types (Your Responsibility)
+
+The kernel is **type-agnostic** - it provides a tree structure but has no concept of "Floor", "Room", or "Zone". Your integration is responsible for:
+
+1. **Defining types** - What location types make sense for your platform
+2. **Storing type metadata** - Where to persist type information
+3. **Enforcing hierarchy rules** - What can parent what
+4. **UI representation** - Icons, labels, drag-and-drop constraints
+
+### Recommended Type Taxonomy
+
+For home automation, we recommend these standard types:
+
+| Type | Description | Can Contain |
+|------|-------------|-------------|
+| **Building** | Separate structure (main house, garage) | Floor, Room |
+| **Floor** | A level of the building | Room, Suite |
+| **Suite** | Room group (e.g., Master Suite) | Room only |
+| **Room** | Standard room | Zone only |
+| **Zone** | Sub-room area (reading nook, kitchen island) | Nothing (terminal) |
+| **Outdoor** | Exterior location | Zone only |
+
+### Hierarchy Rules
+
+Your UI should enforce these constraints:
+
+| Illegal Move | Why |
+|--------------|-----|
+| Floor → Room | Floors contain rooms, not vice versa |
+| Room → Room | Rooms are flat within floors (use Suite for grouping) |
+| Zone → anything | Zones are terminal nodes |
+| Anything → itself | Cannot be own parent |
+| Parent → descendant | Cannot create cycles |
+
+### Storing Type Metadata
+
+**Option A: Integration's own storage** (recommended)
+
+```python
+class LocationTypeRegistry:
+    """Integration maintains type info separately from kernel."""
+    
+    def __init__(self):
+        self._types: dict[str, str] = {}  # location_id → type
+    
+    def get_type(self, location_id: str) -> str | None:
+        return self._types.get(location_id)
+    
+    def set_type(self, location_id: str, loc_type: str) -> None:
+        self._types[location_id] = loc_type
+    
+    def can_parent(self, parent_id: str, child_id: str) -> bool:
+        """Check if reparenting would violate hierarchy rules."""
+        parent_type = self.get_type(parent_id)
+        child_type = self.get_type(child_id)
+        
+        valid_children = {
+            "building": ["floor", "room"],
+            "floor": ["room", "suite"],
+            "suite": ["room"],
+            "room": ["zone"],
+            "zone": [],  # Terminal
+            "outdoor": ["zone"],
+        }
+        return child_type in valid_children.get(parent_type, [])
+```
+
+**Option B: Store in modules dict**
+
+```python
+# Use reserved "_meta" module for integration metadata
+loc_mgr.set_module_config(
+    location_id="kitchen",
+    module_id="_meta",
+    config={
+        "type": "room",
+        "icon": "mdi:stove",
+        "color": "#FF5722"
+    }
+)
+
+# Read back
+meta = loc_mgr.get_module_config("kitchen", "_meta")
+loc_type = meta.get("type", "room")  # Default to room
+```
+
+### Why the Kernel Stays Agnostic
+
+1. **Flexibility**: Your platform might have different type needs
+2. **Simplicity**: Kernel focuses on structure, not semantics
+3. **Power users**: API can bypass UI constraints if needed
+4. **Future-proof**: Add new types without kernel changes
+
+> **See also**: [UI Design Spec](./ui/ui-design.md) section 5.3.1 for detailed UI enforcement rules.
 
 ---
 

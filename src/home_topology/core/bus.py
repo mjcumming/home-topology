@@ -5,8 +5,10 @@ The Event Bus is a simple, synchronous dispatcher for domain events.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Callable, List
+
+from home_topology.core.manager import LocationManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def _utc_now() -> datetime:
     """Get current UTC time (for default factory)."""
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -67,7 +69,7 @@ class EventFilter:
         self.include_ancestors = include_ancestors
         self.include_descendants = include_descendants
 
-    def matches(self, event: Event, location_manager=None) -> bool:
+    def matches(self, event: Event, location_manager: Optional[LocationManager] = None) -> bool:
         """
         Check if an event matches this filter.
 
@@ -114,12 +116,12 @@ class EventBus:
     Handlers are wrapped in try/except to prevent one bad module from crashing the kernel.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the event bus."""
         self._handlers: List[tuple[EventFilter, EventHandler]] = []
-        self._location_manager = None
+        self._location_manager: Optional[LocationManager] = None
 
-    def set_location_manager(self, location_manager) -> None:
+    def set_location_manager(self, location_manager: LocationManager) -> None:
         """
         Set the LocationManager for ancestor/descendant filtering.
 

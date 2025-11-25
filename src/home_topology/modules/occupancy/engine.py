@@ -1,4 +1,4 @@
-"""The Core Logic Engine for Occupancy (from occupancy_manager).
+"""The Core Logic Engine for Occupancy.
 
 This module contains the pure business logic. It accepts events and time,
 and returns state transitions and scheduling instructions.
@@ -7,7 +7,6 @@ Licensed under MIT License
 """
 
 import logging
-from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -16,7 +15,6 @@ from .models import (
     EventType,
     LocationConfig,
     LocationRuntimeState,
-    LockState,
     OccupancyEvent,
     OccupancyStrategy,
     StateTransition,
@@ -76,7 +74,7 @@ class OccupancyEngine:
 
         _LOGGER.info(
             f"Handling event: {event.event_type.value} in {event.location_id} "
-            f"(category={event.category}, source={event.source_id})"
+            f"(source={event.source_id})"
         )
 
         transitions: list[StateTransition] = []
@@ -114,9 +112,9 @@ class OccupancyEngine:
         for location_id in self.configs:
             state = self.state[location_id]
 
-            # If locked frozen, we don't timeout (state is static)
-            if state.lock_state == LockState.LOCKED_FROZEN:
-                _LOGGER.debug(f"  {location_id}: Skipped (locked)")
+            # If locked, we don't timeout (state is static)
+            if state.is_locked:
+                _LOGGER.debug(f"  {location_id}: Skipped (locked by {state.locked_by})")
                 continue
 
             # If not occupied, nothing to timeout
@@ -149,6 +147,7 @@ class OccupancyEngine:
         event: OccupancyEvent | None,
         now: datetime,
         transitions: list[StateTransition],
+        is_propagation: bool = False,
     ) -> None:
         """Recursive update handler with upward and downward propagation.
 
@@ -157,9 +156,10 @@ class OccupancyEngine:
             event: Optional event triggering this update.
             now: Current datetime.
             transitions: List to append state transitions to.
+            is_propagation: True if this is an internal propagation (not external event).
         """
         # 1. Evaluate this location
-        state_changed = self._evaluate_state(location_id, event, now, transitions)
+        state_changed = self._evaluate_state(location_id, event, now, transitions, is_propagation)
 
         if not state_changed:
             return
@@ -167,10 +167,10 @@ class OccupancyEngine:
         config = self.configs[location_id]
         new_state = self.state[location_id]
 
-        # 2. Upward Propagation (Child -> Parent)
-        # If we contribute to parent, bubble up occupancy or identity changes
+        # 2. Upward Propagation (Child -> Parent) - Internal logic
+        # If we contribute to parent, bubble up occupancy
         if config.parent_id and config.contributes_to_parent:
-            # We propagate if we are occupied (or extended) or have occupants
+            # We propagate if we are occupied or have occupants
             # Note: We do NOT propagate vacancy.
             should_propagate = new_state.is_occupied or new_state.active_occupants
 
@@ -179,17 +179,14 @@ class OccupancyEngine:
                     f"  Propagating {location_id} -> {config.parent_id} "
                     f"(occupied={new_state.is_occupied})"
                 )
-                # Construct synthetic event
-                parent_event = OccupancyEvent(
-                    location_id=config.parent_id,
-                    event_type=EventType.PROPAGATED,
-                    category="propagated",
-                    source_id=location_id,
-                    timestamp=now,
-                    # Pass identity up if needed
-                    occupant_id=None,  # Could merge identities here if needed
+                # Internal propagation - no event, just trigger re-evaluation
+                self._process_location_update(
+                    config.parent_id,
+                    event=None,  # Internal propagation doesn't send an event
+                    now=now,
+                    transitions=transitions,
+                    is_propagation=True,
                 )
-                self._process_location_update(config.parent_id, parent_event, now, transitions)
             else:
                 _LOGGER.debug(
                     f"  {location_id} -> {config.parent_id}: "
@@ -203,12 +200,16 @@ class OccupancyEngine:
                 child_config = self.configs[child_id]
                 if child_config.occupancy_strategy == OccupancyStrategy.FOLLOW_PARENT:
                     _LOGGER.debug(
-                        f"  {location_id} -> {child_id}: " f"Triggering re-eval (FOLLOW_PARENT)"
+                        f"  {location_id} -> {child_id}: Triggering re-eval (FOLLOW_PARENT)"
                     )
                     # Trigger re-eval of child (with no event, just context update)
-                    # This is the "Proactive" approach:
-                    # parent change forces child re-eval
-                    self._process_location_update(child_id, None, now, transitions)
+                    self._process_location_update(
+                        child_id,
+                        event=None,
+                        now=now,
+                        transitions=transitions,
+                        is_propagation=True,
+                    )
 
     def _evaluate_state(
         self,
@@ -216,6 +217,7 @@ class OccupancyEngine:
         event: OccupancyEvent | None,
         now: datetime,
         transitions: list[StateTransition],
+        is_propagation: bool = False,
     ) -> bool:
         """Core math. Calculates the new state for a location.
 
@@ -224,6 +226,7 @@ class OccupancyEngine:
             event: Optional event triggering evaluation.
             now: Current datetime.
             transitions: List to append state transitions to.
+            is_propagation: True if this is an internal propagation.
 
         Returns:
             True if state changed, False otherwise.
@@ -232,14 +235,15 @@ class OccupancyEngine:
         current_state = self.state[location_id]
 
         # --- A. Lock Check ---
-        if current_state.lock_state == LockState.LOCKED_FROZEN:
-            # Ignore everything except Manual or Lock changes
-            if not event or event.event_type not in (
-                EventType.MANUAL,
-                EventType.LOCK_CHANGE,
-            ):
+        if current_state.is_locked:
+            # Only process UNLOCK and UNLOCK_ALL when locked
+            if event and event.event_type in (EventType.UNLOCK, EventType.UNLOCK_ALL):
+                pass  # Allow these through
+            elif event and event.event_type == EventType.LOCK:
+                pass  # Allow adding more locks
+            else:
                 _LOGGER.debug(
-                    f"  {location_id}: Event ignored (locked, "
+                    f"  {location_id}: Event ignored (locked by {current_state.locked_by}, "
                     f"event_type={event.event_type.value if event else 'None'})"
                 )
                 return False
@@ -248,88 +252,88 @@ class OccupancyEngine:
         next_occupants = set(current_state.active_occupants)
         next_holds = set(current_state.active_holds)
         next_occupied_until = current_state.occupied_until
-        next_lock_state = current_state.lock_state
+        next_locked_by = set(current_state.locked_by)
 
         if event:
-            # 1. Handle Locking
-            if event.event_type == EventType.LOCK_CHANGE:
-                # Toggle lock state
-                if next_lock_state == LockState.LOCKED_FROZEN:
-                    next_lock_state = LockState.UNLOCKED
-                    _LOGGER.info(f"  {location_id}: UNLOCKED")
+            # 1. Handle Lock Events
+            if event.event_type == EventType.LOCK:
+                next_locked_by.add(event.source_id)
+                _LOGGER.info(f"  {location_id}: LOCKED by {event.source_id}")
+
+            elif event.event_type == EventType.UNLOCK:
+                if event.source_id in next_locked_by:
+                    next_locked_by.remove(event.source_id)
+                    _LOGGER.info(f"  {location_id}: UNLOCKED by {event.source_id}")
                 else:
-                    next_lock_state = LockState.LOCKED_FROZEN
-                    _LOGGER.info(f"  {location_id}: LOCKED")
+                    _LOGGER.debug(
+                        f"  {location_id}: UNLOCK ignored (not locked by {event.source_id})"
+                    )
+
+            elif event.event_type == EventType.UNLOCK_ALL:
+                next_locked_by.clear()
+                _LOGGER.info(f"  {location_id}: ALL LOCKS CLEARED")
 
             # 2. Handle Identity
             if event.occupant_id:
-                if event.event_type == EventType.HOLD_END:
+                if event.event_type == EventType.RELEASE:
                     # Specific Departure: Mike left, but Marla might be here
                     if event.occupant_id in next_occupants:
                         next_occupants.remove(event.occupant_id)
-                else:
+                elif event.event_type in (EventType.TRIGGER, EventType.HOLD):
                     # Arrival or Action: Mike is here
                     next_occupants.add(event.occupant_id)
 
             # 3. Handle Holds
-            if event.event_type == EventType.HOLD_START:
+            if event.event_type == EventType.HOLD:
                 next_holds.add(event.source_id)
-            elif event.event_type == EventType.HOLD_END:
+            elif event.event_type == EventType.RELEASE:
                 if event.source_id in next_holds:
                     next_holds.remove(event.source_id)
 
-            # 4. Handle Manual Override
-            if event.event_type == EventType.MANUAL:
-                # Manual events force occupancy on
-                # If duration provided, use it; otherwise use default timeout
-                timeout_minutes = self._get_timeout(event.category, location_id)
-                if event.duration:
-                    timeout_delta = event.duration
-                else:
-                    timeout_delta = timedelta(minutes=timeout_minutes)
+            # 4. Handle VACATE (Force Vacant)
+            if event.event_type == EventType.VACATE:
+                next_occupants.clear()
+                next_holds.clear()
+                next_occupied_until = None
+                _LOGGER.info(f"  {location_id}: VACATED by {event.source_id}")
 
-                calculated_expiry = now + timeout_delta
-                if next_occupied_until is None or calculated_expiry > next_occupied_until:
-                    next_occupied_until = calculated_expiry
-
-            # 5. Timer Logic (Momentary vs Hold Release vs Propagated)
-            if event.event_type == EventType.MOMENTARY:
-                timeout_minutes = self._get_timeout(event.category, location_id)
-                if event.duration:
-                    timeout_delta = event.duration
-                else:
-                    timeout_delta = timedelta(minutes=timeout_minutes)
-
+            # 5. Timer Logic (TRIGGER and RELEASE)
+            elif event.event_type == EventType.TRIGGER:
+                timeout_seconds = self._get_timeout(event, config)
+                timeout_delta = timedelta(seconds=timeout_seconds)
                 calculated_expiry = now + timeout_delta
 
                 # Extend timer if new > current (or if currently vacant)
                 if next_occupied_until is None or calculated_expiry > next_occupied_until:
                     next_occupied_until = calculated_expiry
 
-            elif event.event_type == EventType.HOLD_END:
-                # Fudge factor applies when the LAST hold drops
+            elif event.event_type == EventType.RELEASE:
+                # Trailing timer applies when the LAST hold drops
                 if not next_holds and current_state.active_holds:
-                    timeout_minutes = self._get_timeout(event.category, location_id)
-                    if event.duration:
-                        timeout_delta = event.duration
-                    else:
-                        timeout_delta = timedelta(minutes=timeout_minutes)
-
+                    timeout_seconds = self._get_release_timeout(event, config)
+                    timeout_delta = timedelta(seconds=timeout_seconds)
                     next_occupied_until = now + timeout_delta
 
-            elif event.event_type == EventType.PROPAGATED:
-                # Propagation extends timer
-                timeout_minutes = self._get_timeout(event.category, location_id)
-                if event.duration:
-                    timeout_delta = event.duration
-                else:
-                    timeout_delta = timedelta(minutes=timeout_minutes)
+        # --- C. Handle Internal Propagation ---
+        # When a child becomes occupied, extend parent timer
+        if is_propagation and not event:
+            # Check if any child is occupied
+            if location_id in self.children_map:
+                for child_id in self.children_map.get(location_id, []):
+                    # Wrong direction - we're checking if OUR children are occupied
+                    pass
 
-                calculated_expiry = now + timeout_delta
-                if next_occupied_until is None or calculated_expiry > next_occupied_until:
-                    next_occupied_until = calculated_expiry
+            # Actually, propagation comes FROM children TO parent
+            # When propagating up, we should extend the parent's timer
+            # Get the config's default timeout
+            timeout_seconds = config.default_timeout
+            timeout_delta = timedelta(seconds=timeout_seconds)
+            calculated_expiry = now + timeout_delta
 
-        # --- C. Determine Occupancy Status (The Strategy) ---
+            if next_occupied_until is None or calculated_expiry > next_occupied_until:
+                next_occupied_until = calculated_expiry
+
+        # --- D. Determine Occupancy Status (The Strategy) ---
         is_occupied_candidate = False
 
         # 1. Timer Active
@@ -339,8 +343,6 @@ class OccupancyEngine:
         # 2. Active Hold
         if next_holds:
             is_occupied_candidate = True
-            # Note: While held, occupied_until is technically irrelevant
-            # until the hold releases, but we keep the underlying timer if set.
 
         # 3. Strategy: FOLLOW_PARENT
         if config.occupancy_strategy == OccupancyStrategy.FOLLOW_PARENT:
@@ -352,29 +354,33 @@ class OccupancyEngine:
                     if parent_state.active_holds or parent_state.active_occupants:
                         next_occupied_until = None
 
-        # --- D. Vacancy Cleanup ---
+        # --- E. Vacancy Cleanup ---
         if not is_occupied_candidate:
             # Reset ephemeral data on vacancy
             next_occupants.clear()
             next_holds.clear()
             next_occupied_until = None
 
-        # --- E. Commit State ---
+        # --- F. Commit State ---
+        # Convert to frozensets for immutable state
+        next_occupants_frozen = frozenset(next_occupants)
+        next_holds_frozen = frozenset(next_holds)
+        next_locked_by_frozen = frozenset(next_locked_by)
+
         # Check if anything actually changed
         if (
             is_occupied_candidate != current_state.is_occupied
             or next_occupied_until != current_state.occupied_until
-            or next_occupants != current_state.active_occupants
-            or next_holds != current_state.active_holds
-            or next_lock_state != current_state.lock_state
+            or next_occupants_frozen != current_state.active_occupants
+            or next_holds_frozen != current_state.active_holds
+            or next_locked_by_frozen != current_state.locked_by
         ):
-            new_state = replace(
-                current_state,
+            new_state = LocationRuntimeState(
                 is_occupied=is_occupied_candidate,
                 occupied_until=next_occupied_until,
-                active_occupants=next_occupants,
-                active_holds=next_holds,
-                lock_state=next_lock_state,
+                active_occupants=next_occupants_frozen,
+                active_holds=next_holds_frozen,
+                locked_by=next_locked_by_frozen,
             )
 
             self.state[location_id] = new_state
@@ -384,7 +390,7 @@ class OccupancyEngine:
                     location_id=location_id,
                     previous_state=current_state,
                     new_state=new_state,
-                    reason="event" if event else "timeout",
+                    reason="event" if event else ("propagation" if is_propagation else "timeout"),
                 )
             )
             return True
@@ -413,25 +419,35 @@ class OccupancyEngine:
 
         return next_exp
 
-    def _get_timeout(self, category: str, location_id: str) -> int:
-        """Get timeout in minutes for a category and location.
+    def _get_timeout(self, event: OccupancyEvent, config: LocationConfig) -> int:
+        """Get timeout in seconds for a TRIGGER event.
 
         Args:
-            category: Event category (e.g., "motion", "presence").
-            location_id: Location ID.
+            event: The occupancy event.
+            config: Location configuration.
 
         Returns:
-            Timeout in minutes (default: 10).
+            Timeout in seconds.
         """
-        config = self.configs.get(location_id)
-        if config:
-            # Try category-specific timeout
-            if category in config.timeouts:
-                return config.timeouts[category]
-            # Fall back to default
-            if "default" in config.timeouts:
-                return config.timeouts["default"]
-        return 10  # Final fallback
+        # Event can override the location default
+        if event.timeout is not None:
+            return event.timeout
+        return config.default_timeout
+
+    def _get_release_timeout(self, event: OccupancyEvent, config: LocationConfig) -> int:
+        """Get trailing timeout in seconds for a RELEASE event.
+
+        Args:
+            event: The occupancy event.
+            config: Location configuration.
+
+        Returns:
+            Timeout in seconds.
+        """
+        # Event can override the location default
+        if event.timeout is not None:
+            return event.timeout
+        return config.hold_release_timeout
 
     def export_state(self) -> dict[str, dict[str, Any]]:
         """Creates a JSON-serializable dump of the current state.
@@ -447,7 +463,7 @@ class OccupancyEngine:
             # Skip if vacant, unlocked, and no occupants/holds
             if (
                 not state.is_occupied
-                and state.lock_state == LockState.UNLOCKED
+                and not state.is_locked
                 and not state.active_occupants
                 and not state.active_holds
                 and state.occupied_until is None
@@ -459,9 +475,9 @@ class OccupancyEngine:
                 "occupied_until": (
                     state.occupied_until.isoformat() if state.occupied_until else None
                 ),
-                "active_occupants": list(state.active_occupants),  # Convert Set to List
+                "active_occupants": list(state.active_occupants),
                 "active_holds": list(state.active_holds),
-                "lock_state": state.lock_state.value,
+                "locked_by": list(state.locked_by),
             }
         return dump
 
@@ -493,44 +509,159 @@ class OccupancyEngine:
             # 2. STALE DATA CHECK (The Critical Logic)
             should_restore = True
             is_occupied = data.get("is_occupied", False)
-            lock_state_value = data.get("lock_state", "unlocked")
-            active_occupants = set(data.get("active_occupants", []))
-            active_holds = set(data.get("active_holds", []))
+            locked_by = frozenset(data.get("locked_by", []))
+            active_occupants = frozenset(data.get("active_occupants", []))
+            active_holds = frozenset(data.get("active_holds", []))
 
-            # Rule A: Locked Frozen states ALWAYS restore (they are timeless)
-            # Check this FIRST before expiration checks
-            if lock_state_value == LockState.LOCKED_FROZEN.value:
+            # Rule A: Locked states ALWAYS restore (they are timeless)
+            if locked_by:
                 should_restore = True
-                # Locked states preserve their occupancy state exactly as saved
-                # Don't modify is_occupied or occupied_until for locked states
 
             # Rule B: Active occupants or holds override expired timers
             elif active_occupants or active_holds:
-                # If there are active occupants or holds, we trust them
-                # (The integration should verify these are still valid)
                 should_restore = True
                 is_occupied = True
-                # Keep occupied_until as None for holds/occupants
 
             # Rule C: If it had an expiry time, and that time passed
             elif occupied_until and occupied_until < now:
-                # It expired while we were restarting.
-                # Force Vacancy unless there are hard Holds/Occupants
-                # (which we might verify later)
-                # For safety, we trust the expiry: It is now Vacant.
                 should_restore = False
                 is_occupied = False
                 occupied_until = None
 
             if should_restore:
-                # Reconstruct the state
                 self.state[loc_id] = LocationRuntimeState(
                     is_occupied=is_occupied,
                     occupied_until=occupied_until,
                     active_occupants=active_occupants,
                     active_holds=active_holds,
-                    lock_state=LockState(lock_state_value),
+                    locked_by=locked_by,
                 )
             else:
-                # Reset to default vacant state
                 self.state[loc_id] = LocationRuntimeState()
+
+    def get_effective_timeout(self, location_id: str, now: datetime) -> datetime | None:
+        """Get when location will TRULY become vacant (considers all descendants).
+
+        This recursively calculates the maximum timeout across a location and
+        all its descendants. Useful for knowing when an entire area will be empty.
+
+        Args:
+            location_id: The location to check.
+            now: Current datetime.
+
+        Returns:
+            The latest timeout across location and all descendants, or None if:
+            - Location is vacant
+            - Location or any descendant has indefinite occupancy (holds/occupants)
+        """
+        if location_id not in self.state:
+            return None
+
+        state = self.state[location_id]
+
+        # If not occupied, effective timeout is None
+        if not state.is_occupied:
+            return None
+
+        # If has active holds or occupants, it's indefinite
+        if state.active_holds or state.active_occupants:
+            return None
+
+        # Start with this location's own timeout
+        effective = state.occupied_until
+
+        # Check all children recursively
+        if location_id in self.children_map:
+            for child_id in self.children_map[location_id]:
+                child_effective = self.get_effective_timeout(child_id, now)
+
+                # If any child is indefinite, parent is effectively indefinite
+                if (
+                    child_effective is None
+                    and self.state.get(child_id, LocationRuntimeState()).is_occupied
+                ):
+                    return None
+
+                # Take the latest timeout
+                if child_effective is not None:
+                    if effective is None or child_effective > effective:
+                        effective = child_effective
+
+        return effective
+
+    def vacate_area(
+        self,
+        location_id: str,
+        source_id: str,
+        now: datetime,
+        include_locked: bool = False,
+    ) -> EngineResult:
+        """Vacate a location and ALL its descendants.
+
+        Args:
+            location_id: Root of the subtree to vacate.
+            source_id: What initiated the vacate (for logging).
+            now: Current datetime.
+            include_locked: If True, also unlock and vacate locked locations.
+
+        Returns:
+            EngineResult with all state transitions that occurred.
+        """
+        _LOGGER.info(f"Vacating area: {location_id} (include_locked={include_locked})")
+
+        transitions: list[StateTransition] = []
+
+        # Get all locations to vacate (self + all descendants)
+        locations_to_vacate = self._get_descendants(location_id)
+        locations_to_vacate.insert(0, location_id)  # Include root
+
+        for loc_id in locations_to_vacate:
+            if loc_id not in self.configs:
+                continue
+
+            state = self.state[loc_id]
+
+            # Handle locked locations
+            if state.is_locked:
+                if not include_locked:
+                    _LOGGER.debug(f"  {loc_id}: Skipped (locked by {state.locked_by})")
+                    continue
+                else:
+                    # Force unlock first
+                    _LOGGER.info(f"  {loc_id}: Force unlocking")
+                    unlock_event = OccupancyEvent(
+                        location_id=loc_id,
+                        event_type=EventType.UNLOCK_ALL,
+                        source_id=source_id,
+                        timestamp=now,
+                    )
+                    self._evaluate_state(
+                        loc_id, unlock_event, now, transitions, is_propagation=False
+                    )
+
+            # Now vacate
+            vacate_event = OccupancyEvent(
+                location_id=loc_id,
+                event_type=EventType.VACATE,
+                source_id=source_id,
+                timestamp=now,
+            )
+            self._evaluate_state(loc_id, vacate_event, now, transitions, is_propagation=False)
+
+        _LOGGER.info(f"Vacated {len(transitions)} locations")
+
+        return EngineResult(
+            next_expiration=self._calculate_next_expiration(now),
+            transitions=transitions,
+        )
+
+    def _get_descendants(self, location_id: str) -> list[str]:
+        """Get all descendants of a location (children, grandchildren, etc.)."""
+        descendants = []
+
+        if location_id in self.children_map:
+            for child_id in self.children_map[location_id]:
+                descendants.append(child_id)
+                descendants.extend(self._get_descendants(child_id))
+
+        return descendants

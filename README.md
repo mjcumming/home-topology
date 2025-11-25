@@ -287,28 +287,36 @@ make check
 
 **📖 Start Here**:
 - **[README.md](./README.md)** - This file (project overview)
-- **[WORK-TRACKING.md](./WORK-TRACKING.md)** ⭐ - Current sprint status, task dashboard
+- **[docs/project-status.md](./docs/project-status.md)** ⭐ - Current sprint status, task dashboard
 
 **🔌 Integration**:
-- **[docs/integration-guide.md](./docs/integration-guide.md)** ⭐ - Complete guide for platform integrators (Home Assistant, OpenHAB, etc.)
+- **[docs/integration-guide.md](./docs/integration-guide.md)** ⭐ - Complete guide for platform integrators
 
-**📊 Daily Operations**:
-- **[ADR-LOG.md](./ADR-LOG.md)** - Architecture decisions with rationale
-- **[docs/open-questions.md](./docs/open-questions.md)** - Open questions needing answers
+**📊 Project**:
+- **[docs/decisions-pending.md](./docs/decisions-pending.md)** - Decisions log (decided and deferred)
+- **[SECURITY.md](./SECURITY.md)** - Security policy and vulnerability reporting
 
 **🏗️ Architecture**:
-- **[DESIGN.md](./DESIGN.md)** - Complete kernel architecture specification
-- **[CODING-STANDARDS.md](./CODING-STANDARDS.md)** - Code style and patterns
+- **[docs/architecture.md](./docs/architecture.md)** ⭐ - Complete kernel architecture specification
+- **[docs/adr-log.md](./docs/adr-log.md)** - Architecture decision records with rationale
+- **[docs/coding-standards.md](./docs/coding-standards.md)** - Code style and patterns
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - How to contribute
 
 **📦 Modules**:
-- **[docs/modules/occupancy-design.md](./docs/modules/occupancy-design.md)** - Occupancy module specification
+- **[docs/modules/occupancy-design.md](./docs/modules/occupancy-design.md)** - Occupancy module specification (current implementation)
+- **[docs/modules/occupancy-rule-engine-design.md](./docs/modules/occupancy-rule-engine-design.md)** ⭐ - Rule-based occupancy engine design
+- **[docs/modules/occupancy-rule-engine-decisions.md](./docs/modules/occupancy-rule-engine-decisions.md)** - Rule engine design decisions
+- **[docs/modules/occupancy-rule-engine-gaps.md](./docs/modules/occupancy-rule-engine-gaps.md)** - Gaps analysis for rule engine
 - **[docs/modules/occupancy-integration.md](./docs/modules/occupancy-integration.md)** - Occupancy integration status
-- **[docs/modules/actions-design.md](./docs/modules/actions-design.md)** - Actions module specification
+- **[docs/modules/actions-design.md](./docs/modules/actions-design.md)** - Actions module specification (placeholder)
+
+**🧪 Testing**:
+- **[docs/testing/guide.md](./docs/testing/guide.md)** - Full testing documentation
+- **[docs/testing/commands.md](./docs/testing/commands.md)** - Quick test reference card
 
 **📚 Reference**:
 - **[docs/project-overview.md](./docs/project-overview.md)** - Detailed project guide
-- **[docs/ai-guide.md](./docs/ai-guide.md)** - AI-assisted development guide
+- **[docs/ai-development-guide.md](./docs/ai-development-guide.md)** - AI-assisted development guide
 - **[CHANGELOG.md](./CHANGELOG.md)** - Version history
 
 ### Development Commands
@@ -329,7 +337,7 @@ make check         # Run all quality checks
 Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting PRs.
 
 Key guidelines:
-- Follow [CODING-STANDARDS.md](./CODING-STANDARDS.md)
+- Follow [docs/coding-standards.md](./docs/coding-standards.md)
 - Add tests for new functionality
 - Update documentation
 - Run `make check` before committing
@@ -338,7 +346,7 @@ Key guidelines:
 
 ## License
 
-TBD – e.g., MIT or Apache-2.0.
+MIT License - see [LICENSE](./LICENSE) for details.
 
 ---
 
@@ -347,4 +355,3 @@ TBD – e.g., MIT or Apache-2.0.
 - **Documentation**: [docs/](./docs/)
 - **Issues**: [GitHub Issues](https://github.com/mjcumming/home-topology/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/mjcumming/home-topology/discussions)
-

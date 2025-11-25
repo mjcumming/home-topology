@@ -100,7 +100,7 @@ home-topology/
 
 ### 5. Feedback Loop Prevention
 **Decision**: Multi-layer protection:
-- Layer 1: Signal role separation (lights aren't occupancy inputs by default)
+- Layer 1: Integration-driven classification (only sensors send occupancy events, not output devices)
 - Layer 2: Module deduplication (only emit events on actual state change)
 - Layer 3: Optional bus-level deduplication
 

@@ -55,9 +55,13 @@ home-topology/
 │   └── modules/            # Behavior modules
 ├── tests/                  # Test suite
 ├── examples/               # Usage examples
-├── docs/                   # Additional documentation
-├── DESIGN.md               # Architecture spec
-├── CODING-STANDARDS.md     # Coding guidelines
+├── docs/                   # Documentation
+│   ├── architecture.md     # Architecture spec
+│   ├── coding-standards.md # Coding guidelines
+│   ├── testing/            # Testing docs
+│   └── modules/            # Module docs
+├── CONTRIBUTING.md         # How to contribute (this file)
+├── SECURITY.md             # Security policy
 └── pyproject.toml          # Package config
 ```
 
@@ -87,7 +91,7 @@ git checkout -b feat/adaptive-timeout
 
 ### 3. Make Changes
 
-Follow [CODING-STANDARDS.md](./CODING-STANDARDS.md):
+Follow [docs/coding-standards.md](./docs/coding-standards.md):
 - Write type-hinted, documented code
 - Add tests for new functionality
 - Update relevant documentation
@@ -177,7 +181,7 @@ Closes #42
 Related to #38
 
 ## Checklist
-- [ ] Code follows CODING-STANDARDS.md
+- [ ] Code follows docs/coding-standards.md
 - [ ] All tests pass
 - [ ] Documentation updated
 - [ ] CHANGELOG.md updated (for significant changes)
@@ -485,4 +489,3 @@ Open an issue or discussion - we're happy to help!
 
 **Document Status**: Active  
 **Last Updated**: 2025-11-24
-

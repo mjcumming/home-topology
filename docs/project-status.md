@@ -1,6 +1,6 @@
 # Work Tracking - home-topology Project
 
-**Last Updated**: 2025-11-24
+**Last Updated**: 2025-11-25
 
 ---
 
@@ -25,11 +25,11 @@
 - [x] Error isolation (try/except per handler)
 
 #### Documentation (100%)
-- [x] DESIGN.md (v1.3) - 590 lines
-- [x] CODING-STANDARDS.md - Complete
-- [x] CONTRIBUTING.md - Complete
+- [x] Architecture spec (v1.3) - 590 lines
+- [x] Coding standards - Complete
+- [x] Contributing guide - Complete
 - [x] Module design docs (occupancy, actions)
-- [x] PROJECT-SUMMARY.md
+- [x] Project overview
 
 #### Development Infrastructure (100%)
 - [x] Makefile with dev commands
@@ -41,7 +41,7 @@
 - [x] CI/CD pipeline (.github/workflows/ci.yml)
 - [x] Date validation script (scripts/check-dates.sh)
 
-#### OccupancyModule (95%)
+#### OccupancyModule (100%)
 - [x] Native integration (no adapter)
 - [x] Engine ported (453 lines)
 - [x] Models ported (182 lines)
@@ -52,18 +52,24 @@
 - [x] Identity tracking
 - [x] Hierarchy propagation
 - [x] Working demo with timeout examples
-- [ ] Comprehensive tests (5% remaining)
+- [x] Comprehensive tests (88 tests passing)
+- [x] `get_effective_timeout()` - true timeout considering descendants
+- [x] `vacate_area()` - cascading vacate command
+
+#### Testing (100%)
+- [x] OccupancyModule integration tests
+- [x] Engine timeout expiration tests
+- [x] FOLLOW_PARENT strategy tests
+- [x] Lock/unlock tests
+- [x] Config migration tests
+- [x] Effective timeout tests
+- [x] Vacate area (cascading) tests
 
 ---
 
 ### 🔨 In Progress
 
-#### Testing (30%)
-- [ ] OccupancyModule integration tests
-- [ ] Engine timeout expiration tests
-- [ ] FOLLOW_PARENT strategy tests
-- [ ] Lock/unlock tests
-- [ ] Config migration tests
+*None currently - OccupancyModule complete*
 
 ---
 
@@ -83,6 +89,13 @@
 - [ ] Module state → HA entities
 - [ ] Discovery/auto-creation
 - [ ] Inbox UI for unassigned entities
+
+#### UI Design (10%)
+- [x] Initial mockup in Gemini Canvas
+- [x] UI design spec document (docs/ui/ui-design.md)
+- [ ] Component refinement in Gemini Canvas
+- [ ] Finalize interaction patterns
+- [ ] HA panel implementation planning
 
 ---
 
@@ -106,37 +119,37 @@
 
 ---
 
-## 💬 Open Questions (See DISCUSSION-NEEDED.md)
+## 💬 Open Questions (See decisions-pending.md)
 
 High priority questions needing decisions:
 1. **License** - MIT, Apache 2.0, or GPL?
 2. **CI/CD** - GitHub Actions setup?
 3. **Package name** - Keep `home_topology` or change to `location_manager`?
 
-Full list: See [DISCUSSION-NEEDED.md](./DISCUSSION-NEEDED.md)
+Full list: See [decisions-pending.md](./decisions-pending.md)
 
 ---
 
 ## 📈 Progress Metrics
 
 ### Overall Project
-- **Completion**: ~40%
+- **Completion**: ~45%
 - **Architecture**: 100% ✅
 - **Core Kernel**: 100% ✅
-- **OccupancyModule**: 90% 🟡
+- **OccupancyModule**: 100% ✅
 - **ActionsModule**: 0% ⚪
 - **HA Integration**: 0% ⚪
 
 ### Code Stats
-- **Total Lines**: ~3,500 (code + docs)
+- **Total Lines**: ~5,500 (code + docs)
 - **Core Kernel**: ~600 lines
 - **OccupancyModule**: ~1,126 lines
-- **Tests**: ~170 lines
+- **Tests**: ~2,600 lines (88 tests)
 - **Documentation**: ~1,600 lines
 
 ### Test Coverage
 - **Core**: ~80% (basic tests exist)
-- **Occupancy**: ~20% (demo works, comprehensive tests TODO)
+- **Occupancy**: ~98% (88 tests, comprehensive suite)
 - **Actions**: 0%
 
 ---
@@ -153,7 +166,7 @@ Track major decisions here with date and rationale.
 - **Rationale**: Time-agnostic testing, matches original design, no threading in module
 - **Approved By**: Mike
 - **Impact**: Medium (affects HA integration design)
-- **See**: ADR-006 in ADR-LOG.md
+- **See**: ADR-006 in adr-log.md
 
 #### Decision: Native Integration (No Adapter)
 - **Context**: How to integrate occupancy_manager
@@ -161,12 +174,12 @@ Track major decisions here with date and rationale.
 - **Rationale**: Cleaner, faster, fewer layers, easier to maintain
 - **Approved By**: Mike
 - **Impact**: High (affects all future modules)
-- **See**: ADR-004 in ADR-LOG.md
+- **See**: ADR-004 in adr-log.md
 
 #### Decision: Module-Specific Design Docs
 - **Context**: Where to document module implementation details
 - **Decision**: Separate docs in `docs/modules/` per module
-- **Rationale**: Keep DESIGN.md focused on architecture, modules can evolve independently
+- **Rationale**: Keep architecture.md focused on architecture, modules can evolve independently
 - **Approved By**: Team discussion
 - **Impact**: Medium (better organization)
 
@@ -174,7 +187,7 @@ Track major decisions here with date and rationale.
 - **Context**: Original spec suggested `location_manager`
 - **Decision**: Keep `home_topology` (more descriptive)
 - **Rationale**: More marketable, describes full system not just one component
-- **Approved By**: Discussion needed (see DISCUSSION-NEEDED.md)
+- **Approved By**: Discussion needed (see decisions-pending.md)
 - **Impact**: Low (name already established in 25+ files)
 
 ---
@@ -184,7 +197,7 @@ Track major decisions here with date and rationale.
 ### v0.1.0 - Alpha Release (Target: TBD)
 - [x] Core kernel working
 - [x] OccupancyModule integrated
-- [ ] OccupancyModule fully tested
+- [x] OccupancyModule fully tested (76 tests)
 - [ ] ActionsModule basic implementation
 - [ ] Example scripts for both modules
 - [ ] Documentation complete
@@ -257,7 +270,7 @@ Use these labels for GitHub issues:
 ## 📅 Next Actions (Immediate)
 
 ### This Week
-1. [ ] Complete OccupancyModule tests
+1. [x] Complete OccupancyModule tests ✅
 2. [ ] Start ActionsModule implementation
 3. [ ] Decide on license (MIT recommended)
 4. [ ] Set up CI/CD (GitHub Actions)
@@ -286,7 +299,7 @@ Use these labels for GitHub issues:
 
 ### For Documentation
 1. Keep decision log up to date
-2. Link to related docs (DESIGN.md, etc.)
+2. Link to related docs (architecture.md, etc.)
 3. Update progress metrics weekly
 
 ---

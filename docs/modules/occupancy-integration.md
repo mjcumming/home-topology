@@ -1,292 +1,649 @@
-# Occupancy Module - Native Integration Complete ✅
+# Occupancy Module - Integration Guide
 
-**Status**: WORKING  
-**Date**: 2025-11-24  
-**Approach**: Native 
-
----
-
-## 🎉 What We Built
-
- `OccupancyModule`.
-
+**Status**: v2.0  
+**Date**: 2025-01-27  
+**Approach**: Integration-Layer Event Classification
 
 ---
 
-## 📁 File Structure
+## Overview
+
+This guide explains how to integrate the OccupancyModule with a home automation platform.
+
+**Key Concept**: The integration layer is responsible for event classification. The core library only processes events.
+
+---
+
+## Architecture
 
 ```
-src/home_topology/modules/occupancy/
-├── __init__.py          # Module exports
-├── models.py            # Core data models (from occupancy_manager)
-├── engine.py            # Core engine logic (from occupancy_manager)
-└── module.py            # LocationModule wrapper (NEW - native integration)
-
-examples/
-└── occupancy-demo.py    # Working demonstration
-
-tests/
-└── test_occupancy_integration.py  # Integration tests
-```
-
----
-
-## ✅ Features Integrated
-
-### From occupancy_manager (All Working)
-
-1. ✅ **Hierarchical tracking** - Parent/child propagation working perfectly
-2. ✅ **Identity management** - Track individual occupants (Mike, Marla, etc.)
-3. ✅ **Locking logic** - Party mode / manual overrides
-4. ✅ **Time-agnostic** - Accepts `now` as parameter (fully testable!)
-5. ✅ **State persistence** - Export/restore with stale cleanup
-6. ✅ **Event types**:
-   - `MOMENTARY` - Motion sensors (timer resets)
-   - `HOLD_START` - Presence/radar/BLE (holds occupancy)
-   - `HOLD_END` - Release holds (starts trailing timer)
-   - `MANUAL` - Direct override
-   - `LOCK_CHANGE` - Toggle party mode
-   - `PROPAGATED` - Internal bubble-up
-
-7. ✅ **Category-based timeouts** - Flexible config per sensor type
-8. ✅ **Confidence scoring** - Based on signal types and timing
-9. ✅ **Next expiration tracking** - Tells host when to wake for timeout checks
-
-### Native home-topology Integration (NEW)
-
-10. ✅ **EventBus integration** - Subscribes to `sensor.state_changed`
-11. ✅ **LocationManager integration** - Reads topology and config
-12. ✅ **Semantic event emission** - Emits `occupancy.changed` events
-13. ✅ **Automatic timeout scheduling** - Threading-based timer management
-14. ✅ **LocationModule protocol** - Full implementation
-15. ✅ **Configuration schema** - JSON schema for UI generation
-
----
-
-## 🎯 Demo Results
-
-Running `examples/occupancy-demo.py` demonstrates:
-
-```
-SCENARIO 1: Motion Detection
-✅ Kitchen motion → kitchen OCCUPIED
-✅ Hierarchy propagation → main_floor OCCUPIED → house OCCUPIED
-✅ Timers set correctly (5 min for motion)
-
-SCENARIO 2: Identity Tracking
-✅ Bluetooth beacon (ble_mike) → Mike tracked in kitchen
-✅ Active holds prevent timeout
-✅ Identity propagates to parent locations
-
-SCENARIO 3: State Persistence
-✅ Dump state captures all locations
-✅ Restore state rebuilds engine correctly
-✅ Occupants and holds restored
+Platform (e.g., Home Assistant)
+    │
+    ▼
+Integration Layer ◄── You implement this
+    │
+    │  Responsibilities:
+    │  - Map entities to locations
+    │  - Classify events (motion → TRIGGER, etc.)
+    │  - Set appropriate timeouts
+    │  - Send OccupancyEvents
+    │
+    ▼
+OccupancyModule (Core Library)
+    │
+    │  Responsibilities:
+    │  - Process events
+    │  - Manage state & timers
+    │  - Handle hierarchy
+    │  - Emit occupancy.changed
+    │
+    ▼
+Actions/Automations
 ```
 
 ---
 
-## 🔄 Event Flow
+## Event Types
 
-```
-1. Platform Event (HA)
-   ↓
-   sensor.state_changed
-   entity_id: binary_sensor.kitchen_motion
-   payload: {old_state: "off", new_state: "on"}
+Your integration sends these events to the core:
 
-2. OccupancyModule Translation
-   ↓
-   OccupancyEvent
-   location_id: "kitchen"
-   event_type: MOMENTARY
-   category: "motion"
-   source_id: "binary_sensor.kitchen_motion"
-
-3. Engine Processing
-   ↓
-   - Updates kitchen state: occupied=True
-   - Sets timer: occupied_until = now + 5min
-   - Propagates to parent: main_floor
-   - Propagates to parent: house
-   - Returns StateTransition list
-
-4. Module Emission
-   ↓
-   occupancy.changed events (3x)
-   - kitchen: occupied=True, confidence=0.8
-   - main_floor: occupied=True, confidence=0.8
-   - house: occupied=True, confidence=0.8
-
-5. Actions Module (Future)
-   ↓
-   Receives occupancy.changed
-   Executes rules (turn on lights, etc.)
-```
+| Event | When to Send |
+|-------|--------------|
+| `TRIGGER` | Activity detected (motion, door open, light on, etc.) |
+| `HOLD` | Continuous presence starts (presence sensor, media playing) |
+| `RELEASE` | Continuous presence ends (presence sensor clears) |
+| `VACATE` | Force vacant (light off, manual clear, exit door) |
+| `LOCK` | Freeze state, add source to `locked_by` set |
+| `UNLOCK` | Remove source from `locked_by`, unfreezes when empty |
+| `UNLOCK_ALL` | Clear all locks (force unlock regardless of sources) |
 
 ---
 
-## 📊 Architecture Benefits
+## Event Classification Examples
 
-### What We Kept (Pure Gold)
-
-1. **Immutable state** - Functional programming, no side effects
-2. **Time-agnostic** - Fully testable without mocking time
-3. **Recursive propagation** - Clean upward/downward logic
-4. **Smart timeout handling** - Expiration tracking, wake scheduling
-5. **Stale data protection** - Safe restore after restarts
-
-### What We Added (Integration)
-
-1. **Event translation** - Platform events → OccupancyEvent
-2. **Config bridge** - LocationManager config → LocationConfig
-3. **Timeout scheduling** - Threading-based timer management
-4. **Semantic events** - occupancy.changed emissions
-5. **Module lifecycle** - attach/dump_state/restore_state
-
----
-
-## 🧪 Testing Status
-
-### Working
-
-- ✅ Module attachment
-- ✅ Motion sensor translation
-- ✅ Occupancy state transitions
-- ✅ Hierarchy propagation
-- ✅ Identity tracking
-- ✅ State persistence
-
-### TODO
-
-- [ ] Hold end transitions (presence sensor leaving)
-- [ ] Actual timeout expiration (need mock time or wait 5 min)
-- [ ] FOLLOW_PARENT strategy
-- [ ] Lock/unlock events
-- [ ] Manual override events
-- [ ] Config migration
-
----
-
-## 📝 Configuration Example
-
-Per-location config:
+### Motion Sensors
 
 ```python
-{
-    "version": 1,
-    "enabled": True,
-    "timeouts": {
-        "default": 600,      # 10 minutes (seconds)
-        "motion": 300,       # 5 minutes
-        "presence": 600,     # 10 minutes (for BLE/radar)
-        "door": 120,         # 2 minutes (door sensors)
-        "media": 300,        # 5 minutes (media player)
+# entity: binary_sensor.kitchen_motion
+# state: off → on
+
+event = OccupancyEvent(
+    location_id="kitchen",
+    event_type=EventType.TRIGGER,
+    source_id="binary_sensor.kitchen_motion",
+    timestamp=now,
+    timeout=300,  # 5 minutes
+)
+```
+
+**Note**: Motion OFF is typically ignored (timer handles timeout).
+
+### Presence Sensors (mmWave, Radar, BLE)
+
+```python
+# entity: binary_sensor.office_presence
+# state: off → on
+
+event = OccupancyEvent(
+    location_id="office",
+    event_type=EventType.HOLD,
+    source_id="binary_sensor.office_presence",
+    timestamp=now,
+)
+
+# state: on → off
+
+event = OccupancyEvent(
+    location_id="office",
+    event_type=EventType.RELEASE,
+    source_id="binary_sensor.office_presence",
+    timestamp=now,
+    timeout=120,  # 2 min trailing
+)
+```
+
+### Door Sensors
+
+**Entry door (momentary)**:
+```python
+# Front door opened
+event = OccupancyEvent(
+    location_id="entryway",
+    event_type=EventType.TRIGGER,
+    source_id="binary_sensor.front_door",
+    timestamp=now,
+    timeout=120,  # 2 minutes
+)
+```
+
+**Exit door (force vacant)** - optional configuration:
+```python
+# Garage door closed (everyone left)
+event = OccupancyEvent(
+    location_id="house",
+    event_type=EventType.VACATE,
+    source_id="binary_sensor.garage_door",
+    timestamp=now,
+)
+```
+
+### Media Players
+
+```python
+# media_player.living_room_tv → playing
+event = OccupancyEvent(
+    location_id="living_room",
+    event_type=EventType.HOLD,
+    source_id="media_player.living_room_tv",
+    timestamp=now,
+)
+
+# media_player.living_room_tv → idle/off
+event = OccupancyEvent(
+    location_id="living_room",
+    event_type=EventType.RELEASE,
+    source_id="media_player.living_room_tv",
+    timestamp=now,
+    timeout=300,  # 5 min after TV off
+)
+```
+
+### Light Switches (Optional - Force Vacant)
+
+If configured to indicate vacancy:
+
+```python
+# light.bedroom_main → off
+event = OccupancyEvent(
+    location_id="bedroom",
+    event_type=EventType.VACATE,
+    source_id="light.bedroom_main",
+    timestamp=now,
+)
+```
+
+### Lock/Unlock (State Freeze)
+
+Freezes occupancy state. Multiple sources can lock independently.
+
+**Use Cases**: Sleep mode, vacation mode, manual override, cleaning mode, etc.
+
+```python
+# Vacation mode - lock house as vacant
+event = OccupancyEvent(
+    location_id="house",
+    event_type=EventType.LOCK,
+    source_id="automation_vacation",
+    timestamp=now,
+)
+# locked_by = {"automation_vacation"}
+
+# Another automation also locks
+event = OccupancyEvent(
+    location_id="house",
+    event_type=EventType.LOCK,
+    source_id="automation_away",
+    timestamp=now,
+)
+# locked_by = {"automation_vacation", "automation_away"}
+
+# Away mode ends - still locked by vacation!
+event = OccupancyEvent(
+    location_id="house",
+    event_type=EventType.UNLOCK,
+    source_id="automation_away",
+    timestamp=now,
+)
+# locked_by = {"automation_vacation"}
+
+# Force unlock everything (user returns early)
+event = OccupancyEvent(
+    location_id="house",
+    event_type=EventType.UNLOCK_ALL,
+    source_id="user_override",
+    timestamp=now,
+)
+# locked_by = {}
+```
+
+---
+
+## Integration Implementation
+
+### Basic Structure
+
+```python
+class MyPlatformOccupancyIntegration:
+    def __init__(self, occupancy_module, location_manager):
+        self.module = occupancy_module
+        self.loc_manager = location_manager
+        
+    def on_entity_state_change(self, entity_id, old_state, new_state):
+        """Platform calls this when entity state changes."""
+        
+        # 1. Find which location this entity belongs to
+        location_id = self.loc_manager.get_location_for_entity(entity_id)
+        if not location_id:
+            return  # Entity not mapped to a location
+            
+        # 2. Classify and create event
+        event = self._classify_event(entity_id, old_state, new_state, location_id)
+        if not event:
+            return  # State change doesn't indicate occupancy
+            
+        # 3. Send to occupancy module
+        self.module.process_event(event)
+        
+    def _classify_event(self, entity_id, old_state, new_state, location_id):
+        """Map entity state change to OccupancyEvent."""
+        now = datetime.now(UTC)
+        
+        # Motion sensor: off → on = TRIGGER
+        if "motion" in entity_id and old_state == "off" and new_state == "on":
+            return OccupancyEvent(
+                location_id=location_id,
+                event_type=EventType.TRIGGER,
+                source_id=entity_id,
+                timestamp=now,
+                timeout=300,
+            )
+            
+        # Presence sensor: off → on = HOLD
+        if "presence" in entity_id and old_state == "off" and new_state == "on":
+            return OccupancyEvent(
+                location_id=location_id,
+                event_type=EventType.HOLD,
+                source_id=entity_id,
+                timestamp=now,
+            )
+            
+        # Presence sensor: on → off = RELEASE
+        if "presence" in entity_id and old_state == "on" and new_state == "off":
+            return OccupancyEvent(
+                location_id=location_id,
+                event_type=EventType.RELEASE,
+                source_id=entity_id,
+                timestamp=now,
+                timeout=120,
+            )
+            
+        return None  # Unhandled
+```
+
+### Configuration-Driven Classification
+
+More flexible approach using configuration:
+
+```python
+EVENT_CONFIG = {
+    "binary_sensor.*_motion": {
+        "on": {"event_type": "TRIGGER", "timeout": 300},
     },
-    "occupancy_strategy": "independent",  # or "follow_parent"
-    "contributes_to_parent": True,
+    "binary_sensor.*_presence": {
+        "on": {"event_type": "HOLD"},
+        "off": {"event_type": "RELEASE", "timeout": 120},
+    },
+    "binary_sensor.*_door": {
+        "on": {"event_type": "TRIGGER", "timeout": 120},
+    },
+    "media_player.*": {
+        "playing": {"event_type": "HOLD"},
+        "idle": {"event_type": "RELEASE", "timeout": 300},
+        "off": {"event_type": "RELEASE", "timeout": 300},
+    },
 }
 ```
 
-### Timeout Categories Supported
-
-- `motion` - PIR motion sensors
-- `presence` - BLE beacons, mmWave radar
-- `door` - Door/window sensors
-- `media` - Media players
-- `default` - Fallback for unknown categories
-
 ---
 
-## 🚀 Next Steps
+## Location Configuration
 
-### Immediate (v0.1.0)
+Set per-location defaults:
 
-1. ✅ **DONE**: Core integration working
-2. [ ] Add tests with pytest
-3. [ ] Add timeout expiration tests (mock time)
-4. [ ] Document entity naming conventions for auto-detection
-
-### Near-term (v0.2.0)
-
-1. [ ] Implement FOLLOW_PARENT strategy
-2. [ ] Add manual override events
-3. [ ] Add lock/unlock UI
-4. [ ] Add "Drunk Mike" mode (extended timeouts)
-
-### Future (v0.3.0+)
-
-1. [ ] Adaptive timeout learning
-2. [ ] Confidence decay over time
-3. [ ] Multi-modal sensor fusion
-4. [ ] Activity recognition (cooking, working, sleeping)
-
----
-
-## 🎓 Key Design Decisions
-
-### 1. No Adapter Layer
-
-**Decision**: Integrate engine directly, translate events in module  
-**Why**: Cleaner, faster, fewer layers, easier to maintain
-
-### 2. Timeout in Minutes Internally
-
-**Decision**: Engine uses minutes, module config uses seconds  
-**Why**: Match original engine, convert at boundary
-
-### 3. Host-Controlled Timeout Checking
-
-**Decision**: Module provides `get_next_timeout()` and `check_timeouts(now)`, host schedules them  
-**Why**: Time-agnostic (testable), host uses its own scheduler (HA async, test clock, etc.)
-
-### 4. Category-Based Translation
-
-**Decision**: Map entity_id patterns → categories (motion, presence, door)  
-**Why**: Flexible, extensible, no hardcoded entity lists
-
-### 5. Confidence Scoring
-
-**Decision**: Simple scoring (1.0 = occupied, 0.8 = ticking down, 0.0 = vacant)  
-**Why**: Good enough for v1, can enhance later
-
----
-
-## 💡 Usage Tips
-
-### Entity Naming Conventions
-
-For auto-detection, name entities with keywords:
-- Motion: `binary_sensor.kitchen_motion`, `binary_sensor.pir_bedroom`
-- Presence: `binary_sensor.radar_office`, `ble_mike`, `ble_marla`
-- Doors: `binary_sensor.front_door`, `binary_sensor.kitchen_door`
-- Media: `media_player.living_room_tv`
-
-### Manual Mapping
-
-If entities don't match patterns, manually map in config:
 ```python
-loc_manager.add_entity_to_location("sensor.my_weird_sensor", "kitchen")
+location_config = {
+    "occupancy": {
+        "enabled": True,
+        "default_timeout": 300,           # 5 min for TRIGGER events
+        "hold_release_timeout": 120,      # 2 min after RELEASE
+        "occupancy_strategy": "independent",
+        "contributes_to_parent": True,
+    }
+}
+
+loc_manager.set_module_config("kitchen", "occupancy", location_config)
 ```
 
-### Debugging
+### Strategy Options
 
-Enable debug logging:
+| Strategy | Behavior |
+|----------|----------|
+| `independent` | Location determines its own state |
+| `follow_parent` | Location mirrors parent's state |
+
+---
+
+## Handling Timeouts
+
+The integration should periodically call `check_timeouts()`:
+
 ```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+# Get when next timeout expires
+next_timeout = module.get_next_timeout(now)
+
+if next_timeout:
+    # Schedule wake at next_timeout
+    schedule_callback(next_timeout, lambda: module.check_timeouts(datetime.now(UTC)))
+```
+
+Or use periodic checking:
+
+```python
+# Check every 30 seconds
+while True:
+    module.check_timeouts(datetime.now(UTC))
+    await asyncio.sleep(30)
+```
+
+### Two Timeout Concepts
+
+The module exposes two different timeout concepts:
+
+| Concept | Method | Description |
+|---------|--------|-------------|
+| **Own Timeout** | `get_location_state()["occupied_until"]` | The location's own timer |
+| **Effective Timeout** | `get_effective_timeout(location_id, now)` | When location will TRULY be vacant (considers all descendants) |
+
+**Example:**
+
+```python
+now = datetime.now(UTC)
+
+# Location's own timer
+state = module.get_location_state("house")
+own_timeout = state["occupied_until"]  # e.g., T+300s
+
+# When truly vacant (considers children)
+effective = module.get_effective_timeout("house", now)  # e.g., T+400s (kitchen has longer timer)
+
+# Display to user
+if effective:
+    remaining = (effective - now).total_seconds()
+    print(f"House will be truly vacant in {remaining}s")
+```
+
+**Use Cases:**
+- **Own timeout**: Display location's individual timer
+- **Effective timeout**: Schedule actions for when area is truly empty
+
+---
+
+## State Persistence
+
+### Save State
+
+```python
+state_snapshot = module.dump_state()
+save_to_storage(state_snapshot)
+```
+
+### Restore State
+
+```python
+state_snapshot = load_from_storage()
+module.restore_state(state_snapshot, now=datetime.now(UTC), max_age_minutes=15)
+```
+
+**Stale Protection**: States older than `max_age_minutes` are ignored (except locked states).
+
+---
+
+## Event Handling
+
+Listen for `occupancy.changed` events:
+
+```python
+def on_occupancy_changed(event):
+    location_id = event.location_id
+    occupied = event.payload["occupied"]
+    
+    if occupied:
+        # Turn on lights, adjust climate, etc.
+        turn_on_lights(location_id)
+    else:
+        # Turn off lights, reduce climate, etc.
+        turn_off_lights(location_id)
+
+event_bus.subscribe("occupancy.changed", on_occupancy_changed)
 ```
 
 ---
 
-## 🏆 Credits
+## Common Patterns
 
-**Original occupancy_manager**: https://github.com/mjcumming/occupancy_manager  
-**Integration**: Native implementation for home-topology  
-**License**: MIT (both projects)
+### "Any Activity" Pattern
+
+For devices that just indicate "something happened":
+
+```python
+# Any state change = TRIGGER
+event = OccupancyEvent(
+    location_id=location_id,
+    event_type=EventType.TRIGGER,
+    source_id=entity_id,
+    timestamp=now,
+    timeout=600,  # 10 min default
+)
+```
+
+### "Definitive Vacant" Pattern
+
+For devices that indicate "definitely empty":
+
+```python
+# Exit detected or manual clear
+event = OccupancyEvent(
+    location_id=location_id,
+    event_type=EventType.VACATE,
+    source_id=entity_id,
+    timestamp=now,
+)
+```
+
+### "Vacate Area" Pattern (Cascading)
+
+To vacate a location AND all its descendants:
+
+```python
+# User clicks "Everyone Left" button for first floor
+transitions = module.vacate_area(
+    location_id="first_floor",
+    source_id="user_button_everyone_left",
+)
+
+# Returns list of all state transitions that occurred
+for t in transitions:
+    print(f"{t.location_id}: {t.previous_state.is_occupied} → {t.new_state.is_occupied}")
+```
+
+**Options:**
+
+```python
+# Default: Skip locked locations (respects locks)
+module.vacate_area("house", "away_mode")
+
+# Force: Also unlock and vacate locked locations
+module.vacate_area("house", "emergency_clear", include_locked=True)
+```
+
+**Use Cases:**
+- "Everyone left" button in UI
+- Away mode activation
+- Testing/debugging
+- Emergency clear
+
+### Identity Tracking
+
+Track who is in which location:
+
+```python
+# BLE beacon detected
+event = OccupancyEvent(
+    location_id="kitchen",
+    event_type=EventType.HOLD,
+    source_id="ble_beacon_mike",
+    timestamp=now,
+    occupant_id="mike",  # Track identity
+)
+```
 
 ---
 
-**Status**: PRODUCTION READY ✅  
-**Last Updated**: 2025-11-24
+## Testing Your Integration
 
+```python
+def test_motion_triggers_occupancy():
+    # Arrange
+    integration = MyIntegration(module, loc_manager)
+    now = datetime(2025, 1, 27, 12, 0, 0)
+    
+    # Act
+    integration.on_entity_state_change(
+        "binary_sensor.kitchen_motion",
+        old_state="off",
+        new_state="on",
+    )
+    
+    # Assert
+    state = module.get_state("kitchen")
+    assert state.is_occupied == True
+    assert state.occupied_until == now + timedelta(seconds=300)
+```
+
+---
+
+## Location Hierarchy Management
+
+### Creating Locations from Platform
+
+When the integration discovers areas from the platform (e.g., Home Assistant):
+
+```python
+# HA area discovered → create as unassigned (shows in Inbox)
+loc_manager.create_location(
+    id="ha_area_kitchen",
+    name="Kitchen",
+    parent_id=None,
+    is_explicit_root=False,  # Unassigned, shows in Inbox
+    ha_area_id="kitchen",
+)
+
+# User creates a root location explicitly
+loc_manager.create_location(
+    id="house",
+    name="House",
+    parent_id=None,
+    is_explicit_root=True,  # Intentional root
+)
+
+# User promotes discovered location to root (e.g., "Garage is standalone")
+loc_manager.set_as_root("ha_area_garage")
+```
+
+### Querying Locations
+
+```python
+# Get intentional roots (top-level hierarchy)
+roots = loc_manager.get_root_locations()
+
+# Get unassigned locations (Inbox)
+inbox = loc_manager.get_unassigned_locations()
+
+# Get all locations with no parent (both roots and unassigned)
+all_top_level = [loc for loc in loc_manager.all_locations() if loc.parent_id is None]
+```
+
+### Sync Model
+
+**Inbound (Platform → Kernel)**:
+
+```python
+def on_platform_area_created(area_id, area_name, floor_id=None):
+    """Handle new area created in platform."""
+    # Create as unassigned
+    location = loc_manager.create_location(
+        id=f"ha_area_{area_id}",
+        name=area_name,
+        parent_id=floor_id,  # If floor exists, use it as parent
+        is_explicit_root=False,
+        ha_area_id=area_id,
+    )
+    
+def on_platform_area_moved(area_id, new_floor_id):
+    """Handle area moved to different floor in platform."""
+    location = loc_manager.get_location(f"ha_area_{area_id}")
+    if location:
+        # Update parent (integration decides conflict handling)
+        location.parent_id = new_floor_id
+```
+
+**Outbound (Kernel → Platform)** - Optional:
+
+```python
+def on_kernel_location_moved(location_id, new_parent_id):
+    """User reorganized hierarchy in our UI."""
+    location = loc_manager.get_location(location_id)
+    if location and location.ha_area_id:
+        # Sync back to platform (if desired)
+        platform.move_area(location.ha_area_id, new_parent_id)
+```
+
+### Conflict Handling
+
+When platform and kernel hierarchy disagree:
+
+```python
+def handle_sync_conflict(location_id, platform_parent, kernel_parent):
+    """Handle hierarchy conflict between platform and kernel."""
+    
+    # Option 1: Kernel wins (recommended)
+    # User's organization takes precedence
+    pass  # Don't update kernel
+    
+    # Option 2: Platform wins (not recommended)
+    # location.parent_id = platform_parent
+    
+    # Option 3: User decides
+    # show_conflict_dialog(location_id, platform_parent, kernel_parent)
+```
+
+---
+
+## Integration Responsibilities Summary
+
+| Responsibility | Implementation |
+|----------------|----------------|
+| **Discovery** | Create Locations from platform areas (`is_explicit_root=False`) |
+| **Sync** | Handle platform ↔ kernel hierarchy updates |
+| **Conflict Handling** | Decide resolution strategy |
+| **Event Classification** | Map platform events → `OccupancyEvent` |
+| **Entity Creation** | Create `binary_sensor.*_occupied` entities |
+| **Timeout Scheduling** | Call `check_timeouts()` at scheduled times |
+| **State Persistence** | Call `dump_state()` / `restore_state()` |
+| **Timeout Display** | Choose `occupied_until` vs `get_effective_timeout()` |
+| **Area Commands** | Expose `vacate_area()` as service/button |
+
+---
+
+## References
+
+- **Architecture**: `../architecture.md`
+- **Design Document**: `occupancy-design.md`
+- **Design Decisions**: `occupancy-design-decisions.md`
+- **Implementation Status**: `occupancy-implementation-status.md`
+- **ADR Log**: `../adr-log.md` (see ADR-016 through ADR-019)
+
+---
+
+**Status**: v2.2 ✅  
+**Last Updated**: 2025-11-25

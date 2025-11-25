@@ -5,7 +5,11 @@ Modules are plug-ins that add behavior to locations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
+
+if TYPE_CHECKING:
+    from home_topology.core.bus import EventBus
+    from home_topology.core.manager import LocationManager
 
 
 class LocationModule(ABC):
@@ -32,7 +36,7 @@ class LocationModule(ABC):
         pass
 
     @abstractmethod
-    def attach(self, bus, loc_manager) -> None:
+    def attach(self, bus: "EventBus", loc_manager: "LocationManager") -> None:
         """
         Attach the module to the kernel.
 

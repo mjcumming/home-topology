@@ -139,8 +139,8 @@ source venv/bin/activate && make check
 
 - `tests/test-location-manager.py` - 16 comprehensive LocationManager tests
 - `tests/test-occupancy-module.py` - 12 comprehensive OccupancyModule tests
-- `TESTING-GUIDE.md` - Full documentation
-- `TEST-COMMANDS.md` - This quick reference
+- `docs/testing/guide.md` - Full documentation
+- `docs/testing/commands.md` - This quick reference
 
 ## Notes
 

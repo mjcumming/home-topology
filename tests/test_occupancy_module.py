@@ -1,9 +1,12 @@
 """
-Comprehensive tests for OccupancyModule with extensive logging.
+Comprehensive tests for OccupancyModule.
 
-These tests verify:
+Tests verify:
 - Module attachment and initialization
-- Motion sensor event handling
+- Motion sensor event handling (TRIGGER)
+- Door sensor event handling (TRIGGER)
+- Media player event handling (HOLD/RELEASE)
+- Lock/unlock events (LOCK/UNLOCK/UNLOCK_ALL)
 - Hierarchy propagation (child -> parent)
 - Identity tracking with presence sensors
 - Hold events (continuous presence)
@@ -53,11 +56,8 @@ def location_manager():
         config = {
             "version": 1,
             "enabled": True,
-            "timeouts": {
-                "default": 600,  # 10 min
-                "motion": 300,  # 5 min
-                "presence": 600,  # 10 min
-            },
+            "default_timeout": 300,  # 5 minutes
+            "hold_release_timeout": 120,  # 2 minutes
         }
         mgr.set_module_config(location_id=loc_id, module_id="occupancy", config=config)
         logger.debug(f"  ✓ {loc_id}: configured")
@@ -114,12 +114,9 @@ class TestOccupancyModuleAttachment:
         logger.info("Verifying initial state (all vacant)...")
         for loc_id in ["house", "main_floor", "kitchen"]:
             state = occupancy_module.get_location_state(loc_id)
-            logger.debug(
-                f"  {loc_id}: occupied={state['occupied']}, confidence={state['confidence']}"
-            )
+            logger.debug(f"  {loc_id}: occupied={state['occupied']}")
             assert state is not None
             assert state["occupied"] is False
-            assert state["confidence"] == 0.0
         logger.info("✓ All locations start vacant")
 
 
@@ -145,10 +142,6 @@ class TestOccupancyModuleMotionEvents:
         logger.info("✓ Event capture handler subscribed")
 
         logger.info("Sending motion sensor event: off → on")
-        logger.debug("  Entity: binary_sensor.kitchen_motion")
-        logger.debug("  Old state: off")
-        logger.debug("  New state: on")
-
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
@@ -178,7 +171,6 @@ class TestOccupancyModuleMotionEvents:
         logger.debug(f"Kitchen event payload: {kitchen_event.payload}")
 
         assert kitchen_event.payload["occupied"] is True
-        assert kitchen_event.payload["confidence"] > 0.0
         assert kitchen_event.payload["previous_occupied"] is False
         logger.info("✓ Kitchen is occupied")
 
@@ -269,9 +261,7 @@ class TestOccupancyModuleHierarchyPropagation:
         logger.info("Verifying all are occupied...")
         for loc_id in ["kitchen", "main_floor", "house"]:
             state = occupancy_module.get_location_state(loc_id)
-            logger.debug(
-                f"  {loc_id}: occupied={state['occupied']}, confidence={state['confidence']}"
-            )
+            logger.debug(f"  {loc_id}: occupied={state['occupied']}")
             assert state["occupied"] is True
 
         logger.info("✓ Occupancy successfully propagated up hierarchy")
@@ -453,14 +443,8 @@ class TestOccupancyModuleConfiguration:
 
         assert config["version"] == 1
         assert config["enabled"] is True
-        assert "timeouts" in config
-
-        logger.info("Timeout values:")
-        for category, seconds in config["timeouts"].items():
-            logger.debug(f"  {category}: {seconds}s ({seconds/60}min)")
-
-        assert config["timeouts"]["motion"] == 300  # 5 minutes
-        assert config["timeouts"]["presence"] == 600  # 10 minutes
+        assert config["default_timeout"] == 300  # 5 minutes
+        assert config["hold_release_timeout"] == 120  # 2 minutes
         logger.info("✓ Default config verified")
 
     def test_config_schema(self, occupancy_module):
@@ -477,18 +461,9 @@ class TestOccupancyModuleConfiguration:
         assert schema["type"] == "object"
         assert "properties" in schema
         assert "enabled" in schema["properties"]
-        assert "timeouts" in schema["properties"]
+        assert "default_timeout" in schema["properties"]
+        assert "hold_release_timeout" in schema["properties"]
 
-        logger.info("Timeout property constraints:")
-        timeout_props = schema["properties"]["timeouts"]["properties"]
-        for prop_name, prop_def in timeout_props.items():
-            logger.debug(
-                f"  {prop_name}: min={prop_def.get('minimum')}, default={prop_def.get('default')}"
-            )
-
-        assert "motion" in timeout_props
-        assert "presence" in timeout_props
-        assert timeout_props["motion"]["minimum"] == 30
         logger.info("✓ Config schema verified")
 
 
@@ -528,77 +503,34 @@ class TestOccupancyModuleTimeouts:
         if next_timeout:
             time_until = (next_timeout - now).total_seconds()
             logger.info(f"Time until timeout: {time_until}s ({time_until/60}min)")
-            # Motion timeout is 300 seconds (5 minutes)
             assert time_until > 0
             logger.info("✓ Timeout scheduled in future")
         else:
             logger.warning("No timeout scheduled (might be held)")
 
-    def test_check_timeouts_manually(self, event_bus, occupancy_module, location_manager):
-        """Test manually triggering timeout check."""
+    def test_check_timeouts_manually(self, occupancy_module):
+        """Test manually triggering timeout check using direct API."""
         logger.info("=" * 80)
         logger.info("TEST: Manual timeout check")
         logger.info("=" * 80)
 
-        # Override config with very short timeout for testing
-        logger.info("Setting short timeout (1 minute) for testing...")
-        for loc_id in ["house", "main_floor", "kitchen"]:
-            location_manager.set_module_config(
-                location_id=loc_id,
-                module_id="occupancy",
-                config={
-                    "version": 1,
-                    "enabled": True,
-                    "timeouts": {
-                        "motion": 60,  # 1 minute
-                    },
-                },
-            )
-
-        # Recreate module with new config
-        occupancy_module = OccupancyModule()
-        occupancy_module.attach(event_bus, location_manager)
-        logger.info("✓ Module recreated with short timeout")
-
         now = datetime.now(UTC)
         logger.info(f"Time T0: {now}")
 
-        logger.info("Triggering motion at T0...")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="binary_sensor.kitchen_motion",
-                payload={"old_state": "off", "new_state": "on"},
-                timestamp=now,
-            )
-        )
+        # Use direct API with explicit short timeout
+        logger.info("Triggering at T0 with 60s timeout...")
+        occupancy_module.trigger("kitchen", "motion", timeout=60, now=now)
 
         state = occupancy_module.get_location_state("kitchen")
         logger.info(f"T0: Kitchen occupied={state['occupied']}")
         assert state["occupied"] is True
 
-        # Simulate time passing (61 seconds = just past 1 minute)
+        # Simulate time passing (61 seconds = just past timeout)
         future = now + timedelta(seconds=61)
         logger.info(f"Time T+61s: {future}")
 
-        emitted_events = []
-
-        def capture_events(event: Event):
-            if event.type == "occupancy.changed":
-                logger.info(
-                    f"📢 Timeout event: {event.location_id} → occupied={event.payload['occupied']}"
-                )
-                emitted_events.append(event)
-
-        event_bus.subscribe(capture_events)
-
         logger.info("Checking timeouts at T+61s...")
         occupancy_module.check_timeouts(future)
-
-        logger.info(f"Timeout events emitted: {len(emitted_events)}")
-        for e in emitted_events:
-            logger.debug(f"  - {e.location_id}: occupied={e.payload['occupied']}")
 
         state_after = occupancy_module.get_location_state("kitchen")
         logger.info(f"T+61s: Kitchen occupied={state_after['occupied']}")
@@ -608,51 +540,323 @@ class TestOccupancyModuleTimeouts:
         logger.info("✓ Timeout correctly expired occupancy")
 
 
-class TestOccupancyModuleComplexScenarios:
-    """Test suite for complex real-world scenarios."""
+class TestOccupancyModuleDoorSensors:
+    """Test suite for door sensor event handling."""
 
-    def test_multiple_sensors_same_room(self, event_bus, occupancy_module, location_manager):
-        """Test multiple sensors in the same room."""
+    def test_door_sensor_triggers_occupancy(self, event_bus, occupancy_module, location_manager):
+        """Test that door sensor triggers occupancy."""
         logger.info("=" * 80)
-        logger.info("TEST: Multiple sensors in same room")
+        logger.info("TEST: Door sensor triggers occupancy")
         logger.info("=" * 80)
 
-        # Add second sensor to kitchen
-        logger.info("Adding second motion sensor to kitchen...")
-        location_manager.add_entity_to_location("binary_sensor.kitchen_motion_2", "kitchen")
-        logger.debug("  ✓ binary_sensor.kitchen_motion_2 -> kitchen")
+        # Add door sensor to kitchen
+        logger.info("Adding door sensor to kitchen...")
+        location_manager.add_entity_to_location("binary_sensor.kitchen_door", "kitchen")
+        logger.debug("  ✓ binary_sensor.kitchen_door -> kitchen")
 
-        logger.info("Triggering first sensor...")
+        emitted_events = []
+
+        def capture_events(event: Event):
+            if event.type == "occupancy.changed":
+                logger.info(f"📢 Occupancy changed: {event.location_id}")
+                emitted_events.append(event)
+
+        event_bus.subscribe(capture_events)
+
+        logger.info("Sending door sensor event: off → on (door opened)")
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
                 source="ha",
-                entity_id="binary_sensor.kitchen_motion",
-                payload={"old_state": "off", "new_state": "on"},
+                entity_id="binary_sensor.kitchen_door",
+                payload={
+                    "old_state": "off",
+                    "new_state": "on",
+                },
+                timestamp=datetime.now(UTC),
+            )
+        )
+
+        logger.info("Verifying door sensor triggered occupancy...")
+        occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
+        assert len(occ_events) > 0
+
+        kitchen_event = next((e for e in occ_events if e.location_id == "kitchen"), None)
+        assert kitchen_event is not None
+        assert kitchen_event.payload["occupied"] is True
+        logger.info("✓ Door sensor triggered occupancy")
+
+
+class TestOccupancyModuleMediaPlayers:
+    """Test suite for media player event handling."""
+
+    def test_media_player_playing_holds_occupancy(
+        self, event_bus, occupancy_module, location_manager
+    ):
+        """Test that media player playing creates a hold (indefinite occupancy)."""
+        logger.info("=" * 80)
+        logger.info("TEST: Media player playing holds occupancy")
+        logger.info("=" * 80)
+
+        # Add media player to kitchen
+        logger.info("Adding media player to kitchen...")
+        location_manager.add_entity_to_location("media_player.kitchen_speaker", "kitchen")
+
+        emitted_events = []
+
+        def capture_events(event: Event):
+            if event.type == "occupancy.changed":
+                logger.info(f"📢 Occupancy changed: {event.location_id}")
+                emitted_events.append(event)
+
+        event_bus.subscribe(capture_events)
+
+        logger.info("Sending media player event: idle → playing")
+        event_bus.publish(
+            Event(
+                type="sensor.state_changed",
+                source="ha",
+                entity_id="media_player.kitchen_speaker",
+                payload={
+                    "old_state": "idle",
+                    "new_state": "playing",
+                },
+                timestamp=datetime.now(UTC),
+            )
+        )
+
+        logger.info("Verifying media player created hold...")
+        occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
+        assert len(occ_events) > 0
+
+        kitchen_event = next((e for e in occ_events if e.location_id == "kitchen"), None)
+        assert kitchen_event is not None
+        assert kitchen_event.payload["occupied"] is True
+        assert "media_player.kitchen_speaker" in kitchen_event.payload["active_holds"]
+        logger.info("✓ Media player created hold")
+
+    def test_media_player_stopping_releases_hold(
+        self, event_bus, occupancy_module, location_manager
+    ):
+        """Test that media player stopping releases hold and starts trailing timeout."""
+        logger.info("=" * 80)
+        logger.info("TEST: Media player stopping releases hold")
+        logger.info("=" * 80)
+
+        # Add media player
+        location_manager.add_entity_to_location("media_player.kitchen_speaker", "kitchen")
+
+        emitted_events = []
+
+        def capture_events(event: Event):
+            if event.type == "occupancy.changed":
+                emitted_events.append(event)
+
+        event_bus.subscribe(capture_events)
+
+        logger.info("Step 1: Media starts playing (creates hold)")
+        event_bus.publish(
+            Event(
+                type="sensor.state_changed",
+                source="ha",
+                entity_id="media_player.kitchen_speaker",
+                payload={"old_state": "idle", "new_state": "playing"},
                 timestamp=datetime.now(UTC),
             )
         )
 
         state1 = occupancy_module.get_location_state("kitchen")
-        logger.info(f"After sensor 1: occupied={state1['occupied']}")
+        logger.info(f"After playing: occupied={state1['occupied']}, holds={state1['active_holds']}")
         assert state1["occupied"] is True
+        assert "media_player.kitchen_speaker" in state1["active_holds"]
+        emitted_events.clear()
 
-        logger.info("Triggering second sensor...")
+        logger.info("Step 2: Media stops (releases hold, starts trailing timeout)")
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
                 source="ha",
-                entity_id="binary_sensor.kitchen_motion_2",
-                payload={"old_state": "off", "new_state": "on"},
+                entity_id="media_player.kitchen_speaker",
+                payload={"old_state": "playing", "new_state": "idle"},
                 timestamp=datetime.now(UTC),
             )
         )
 
         state2 = occupancy_module.get_location_state("kitchen")
-        logger.info(f"After sensor 2: occupied={state2['occupied']}")
-        assert state2["occupied"] is True
+        logger.info(
+            f"After stopping: occupied={state2['occupied']}, holds={state2['active_holds']}"
+        )
+        assert state2["occupied"] is True  # Still occupied due to trailing timeout
+        assert "media_player.kitchen_speaker" not in state2["active_holds"]  # Hold released
+        assert state2["occupied_until"] is not None  # Trailing timeout started
+        logger.info("✓ Hold released and trailing timeout started")
 
-        logger.info("✓ Multiple sensors work correctly")
+
+class TestOccupancyModuleLockEvents:
+    """Test suite for lock/unlock events."""
+
+    def test_lock_and_unlock(self, occupancy_module):
+        """Test that LOCK and UNLOCK events work correctly."""
+        logger.info("=" * 80)
+        logger.info("TEST: Lock and unlock events")
+        logger.info("=" * 80)
+
+        now = datetime.now(UTC)
+
+        # First, set kitchen to occupied using direct API
+        logger.info("Step 1: Setting kitchen to occupied...")
+        occupancy_module.trigger("kitchen", "binary_sensor.kitchen_motion", timeout=300, now=now)
+
+        state1 = occupancy_module.get_location_state("kitchen")
+        assert state1["occupied"] is True
+        assert state1["is_locked"] is False
+        assert len(state1["locked_by"]) == 0
+        logger.info("✓ Kitchen occupied and unlocked")
+
+        # Lock it
+        logger.info("Step 2: Locking kitchen...")
+        occupancy_module.lock("kitchen", "automation_sleep_mode", now=now)
+
+        state2 = occupancy_module.get_location_state("kitchen")
+        assert state2["is_locked"] is True
+        assert "automation_sleep_mode" in state2["locked_by"]
+        logger.info(f"✓ Kitchen locked by: {state2['locked_by']}")
+
+        # Add another lock
+        logger.info("Step 3: Adding another lock...")
+        occupancy_module.lock("kitchen", "automation_dnd", now=now)
+
+        state3 = occupancy_module.get_location_state("kitchen")
+        assert state3["is_locked"] is True
+        assert "automation_sleep_mode" in state3["locked_by"]
+        assert "automation_dnd" in state3["locked_by"]
+        logger.info(f"✓ Kitchen locked by: {state3['locked_by']}")
+
+        # Unlock first lock
+        logger.info("Step 4: Unlocking sleep_mode (should still be locked)...")
+        occupancy_module.unlock("kitchen", "automation_sleep_mode", now=now)
+
+        state4 = occupancy_module.get_location_state("kitchen")
+        assert state4["is_locked"] is True  # Still locked by dnd
+        assert "automation_sleep_mode" not in state4["locked_by"]
+        assert "automation_dnd" in state4["locked_by"]
+        logger.info(f"✓ Still locked by: {state4['locked_by']}")
+
+        # Unlock second lock
+        logger.info("Step 5: Unlocking dnd (should be fully unlocked)...")
+        occupancy_module.unlock("kitchen", "automation_dnd", now=now)
+
+        state5 = occupancy_module.get_location_state("kitchen")
+        assert state5["is_locked"] is False
+        assert len(state5["locked_by"]) == 0
+        logger.info("✓ Kitchen fully unlocked")
+
+    def test_unlock_all(self, occupancy_module):
+        """Test that UNLOCK_ALL clears all locks."""
+        logger.info("=" * 80)
+        logger.info("TEST: UNLOCK_ALL clears all locks")
+        logger.info("=" * 80)
+
+        now = datetime.now(UTC)
+
+        # Set occupied and add multiple locks
+        occupancy_module.trigger("kitchen", "motion", now=now)
+        occupancy_module.lock("kitchen", "lock_a", now=now)
+        occupancy_module.lock("kitchen", "lock_b", now=now)
+        occupancy_module.lock("kitchen", "lock_c", now=now)
+
+        state1 = occupancy_module.get_location_state("kitchen")
+        assert len(state1["locked_by"]) == 3
+        logger.info(f"Kitchen has {len(state1['locked_by'])} locks")
+
+        # Force unlock all
+        logger.info("Force unlocking all...")
+        occupancy_module.unlock_all("kitchen", "user_override", now=now)
+
+        state2 = occupancy_module.get_location_state("kitchen")
+        assert state2["is_locked"] is False
+        assert len(state2["locked_by"]) == 0
+        logger.info("✓ All locks cleared")
+
+    def test_locked_state_ignores_events(self, occupancy_module):
+        """Test that locked state ignores normal events."""
+        logger.info("=" * 80)
+        logger.info("TEST: Locked state ignores normal events")
+        logger.info("=" * 80)
+
+        now = datetime.now(UTC)
+
+        # Set to occupied and locked
+        logger.info("Setting kitchen to occupied and locked...")
+        occupancy_module.trigger("kitchen", "motion", now=now)
+        occupancy_module.lock("kitchen", "manual_lock", now=now)
+
+        state1 = occupancy_module.get_location_state("kitchen")
+        occupied_until_1 = state1["occupied_until"]
+        assert state1["occupied"] is True
+        assert state1["is_locked"] is True
+        logger.info("✓ Kitchen occupied and locked")
+
+        # Try to trigger another event (should be ignored)
+        logger.info("Sending another trigger event (should be ignored)...")
+        future = now + timedelta(seconds=10)
+        occupancy_module.trigger("kitchen", "motion2", timeout=600, now=future)
+
+        state2 = occupancy_module.get_location_state("kitchen")
+        # Timer should not have been extended
+        assert state2["occupied_until"] == occupied_until_1
+        logger.info("✓ Trigger event ignored (as expected)")
+
+        # VACATE should also be ignored
+        logger.info("Sending VACATE event (should be ignored)...")
+        occupancy_module.vacate("kitchen", "light_off", now=future)
+
+        state3 = occupancy_module.get_location_state("kitchen")
+        assert state3["occupied"] is True  # Still occupied
+        logger.info("✓ VACATE event ignored (as expected)")
+
+
+class TestOccupancyModuleDirectAPI:
+    """Test suite for direct API methods."""
+
+    def test_trigger_api(self, occupancy_module):
+        """Test trigger() API method."""
+        now = datetime.now(UTC)
+
+        occupancy_module.trigger("kitchen", "sensor1", timeout=120, now=now)
+
+        state = occupancy_module.get_location_state("kitchen")
+        assert state["occupied"] is True
+
+    def test_hold_and_release_api(self, occupancy_module):
+        """Test hold() and release() API methods."""
+        now = datetime.now(UTC)
+
+        # Hold
+        occupancy_module.hold("kitchen", "presence_sensor", now=now)
+
+        state1 = occupancy_module.get_location_state("kitchen")
+        assert state1["occupied"] is True
+        assert "presence_sensor" in state1["active_holds"]
+
+        # Release
+        occupancy_module.release("kitchen", "presence_sensor", timeout=60, now=now)
+
+        state2 = occupancy_module.get_location_state("kitchen")
+        assert state2["occupied"] is True  # Still occupied (trailing timeout)
+        assert "presence_sensor" not in state2["active_holds"]
+
+    def test_vacate_api(self, occupancy_module):
+        """Test vacate() API method."""
+        now = datetime.now(UTC)
+
+        # First occupy
+        occupancy_module.trigger("kitchen", "motion", now=now)
+        assert occupancy_module.get_location_state("kitchen")["occupied"] is True
+
+        # Then vacate
+        occupancy_module.vacate("kitchen", "light_off", now=now)
+        assert occupancy_module.get_location_state("kitchen")["occupied"] is False
 
 
 if __name__ == "__main__":

@@ -7,33 +7,36 @@ Licensed under MIT License
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-
-
-class LocationKind(Enum):
-    """Type of location."""
-
-    AREA = "area"
-    VIRTUAL = "virtual"
+from typing import FrozenSet
 
 
 class EventType(Enum):
-    """The mechanical behavior of an occupancy event."""
+    """The mechanical behavior of an occupancy event.
 
-    MOMENTARY = "momentary"  # Transient signal (Motion, Door Trip) -> Resets timer
-    HOLD_START = "hold_start"  # Continuous start (Radar, Media Start) -> Pauses timer
-    HOLD_END = "hold_end"  # Continuous end (Radar, Media Stop) -> Starts trailing timer
-    MANUAL = "manual"  # Direct override
-    LOCK_CHANGE = "lock_change"
-    PROPAGATED = "propagated"  # Internal bubble-up
+    Occupancy Signals (sent by integrations):
+        TRIGGER: Activity detected → occupied + timer
+        HOLD: Presence detected → occupied indefinitely
+        RELEASE: Presence cleared → trailing timer starts
+        VACATE: Force vacant immediately
 
+    State Control:
+        LOCK: Add source to locked_by set (freeze state)
+        UNLOCK: Remove source from locked_by set
+        UNLOCK_ALL: Clear all locks (force unlock)
+    """
 
-class LockState(Enum):
-    """Lock state for a location."""
+    # Occupancy signals
+    TRIGGER = "trigger"  # Activity detected → occupied + timer
+    HOLD = "hold"  # Presence detected → occupied indefinitely
+    RELEASE = "release"  # Presence cleared → trailing timer starts
+    VACATE = "vacate"  # Force vacant immediately
 
-    UNLOCKED = "unlocked"
-    LOCKED_FROZEN = "locked_frozen"
+    # State control
+    LOCK = "lock"  # Add source to locked_by
+    UNLOCK = "unlock"  # Remove source from locked_by
+    UNLOCK_ALL = "unlock_all"  # Clear all locks
 
 
 class OccupancyStrategy(Enum):
@@ -50,61 +53,64 @@ class LocationConfig:
     Attributes:
         id: Unique identifier.
         parent_id: Optional container location ID.
-        kind: Type of location.
         occupancy_strategy: Strategy logic.
         contributes_to_parent: If False, occupancy stops here.
-        timeouts: Dictionary mapping 'category' strings to minutes.
-            e.g. { "motion": 10, "door": 2, "my_custom_sensor": 5 }
+        default_timeout: Seconds for TRIGGER events (default: 300).
+        hold_release_timeout: Trailing seconds after RELEASE (default: 120).
     """
 
     id: str
     parent_id: str | None = None
-    kind: LocationKind = LocationKind.AREA
     occupancy_strategy: OccupancyStrategy = OccupancyStrategy.INDEPENDENT
     contributes_to_parent: bool = True
-
-    # Defaults are just data examples now, not hardcoded logic
-    timeouts: dict[str, int] = field(
-        default_factory=lambda: {
-            "default": 10,
-            "motion": 10,
-            "presence": 5,
-        }
-    )
+    default_timeout: int = 300  # 5 minutes for TRIGGER events
+    hold_release_timeout: int = 120  # 2 minutes after RELEASE
 
 
 @dataclass(frozen=True)
 class LocationRuntimeState:
-    """Runtime state for a location (Immutable)."""
+    """Runtime state for a location (Immutable).
+
+    Attributes:
+        is_occupied: Whether the location is currently occupied.
+        occupied_until: Timer expiration (None = indefinite hold).
+        active_occupants: Identity tracking (optional).
+        active_holds: Source IDs with active holds.
+        locked_by: Set of source IDs that have locked this location.
+                   Location is locked when this set is non-empty.
+    """
 
     is_occupied: bool = False
     occupied_until: datetime | None = None
-    active_occupants: set[str] = field(default_factory=set)
-    active_holds: set[str] = field(default_factory=set)
-    lock_state: LockState = LockState.UNLOCKED
+    active_occupants: FrozenSet[str] = field(default_factory=frozenset)
+    active_holds: FrozenSet[str] = field(default_factory=frozenset)
+    locked_by: FrozenSet[str] = field(default_factory=frozenset)
+
+    @property
+    def is_locked(self) -> bool:
+        """Check if this location is locked (frozen)."""
+        return len(self.locked_by) > 0
 
 
 @dataclass(frozen=True)
 class OccupancyEvent:
-    """An occupancy event.
+    """An occupancy event sent by the integration layer.
 
     Attributes:
         location_id: Target location.
-        event_type: The mechanic (MOMENTARY vs HOLD).
-        category: The config key for looking up timeout (e.g. "motion").
-        source_id: Unique device ID (e.g. "binary_sensor.kitchen_pir").
-        timestamp: When it happened.
-        occupant_id: Optional identity.
-        duration: Optional override duration.
+        event_type: The event type (TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL).
+        source_id: Unique device/source ID (e.g. "binary_sensor.kitchen_motion").
+        timestamp: When the event occurred.
+        timeout: Optional timeout override in seconds (uses location default if None).
+        occupant_id: Optional identity tracking.
     """
 
     location_id: str
     event_type: EventType
-    category: str
     source_id: str
     timestamp: datetime
+    timeout: int | None = None  # Seconds, uses location default if None
     occupant_id: str | None = None
-    duration: timedelta | None = None
 
 
 @dataclass(frozen=True)

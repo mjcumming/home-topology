@@ -4,8 +4,12 @@ ActionsModule implementation.
 Triggers automations based on location events and state changes.
 """
 
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 from home_topology.modules.base import LocationModule
+
+if TYPE_CHECKING:
+    from home_topology.core.bus import EventBus
+    from home_topology.core.manager import LocationManager
 
 
 class ActionsModule(LocationModule):
@@ -24,7 +28,7 @@ class ActionsModule(LocationModule):
     def CURRENT_CONFIG_VERSION(self) -> int:
         return 1
 
-    def attach(self, bus, loc_manager) -> None:
+    def attach(self, bus: "EventBus", loc_manager: "LocationManager") -> None:
         """
         Attach the actions module to the kernel.
 

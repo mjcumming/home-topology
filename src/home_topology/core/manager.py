@@ -25,7 +25,7 @@ class LocationManager:
     Does NOT implement occupancy, energy, or actions logic.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty location manager."""
         self._locations: Dict[str, Location] = {}
         self._entity_to_location: Dict[str, str] = {}
@@ -35,6 +35,7 @@ class LocationManager:
         id: str,
         name: str,
         parent_id: Optional[str] = None,
+        is_explicit_root: bool = False,
         ha_area_id: Optional[str] = None,
     ) -> Location:
         """
@@ -43,7 +44,11 @@ class LocationManager:
         Args:
             id: Unique identifier
             name: Human-readable name
-            parent_id: Parent location ID (None for root)
+            parent_id: Parent location ID (None for root/unassigned)
+            is_explicit_root: True if intentionally top-level (e.g., "House").
+                When parent_id is None:
+                - is_explicit_root=True: Shows as root in hierarchy
+                - is_explicit_root=False: Shows in Inbox (unassigned)
             ha_area_id: Optional Home Assistant area ID
 
         Returns:
@@ -62,6 +67,7 @@ class LocationManager:
             id=id,
             name=name,
             parent_id=parent_id,
+            is_explicit_root=is_explicit_root,
             ha_area_id=ha_area_id,
         )
 
@@ -69,6 +75,59 @@ class LocationManager:
         logger.info(f"Created location: {id} ({name})")
 
         return location
+
+    def get_root_locations(self) -> List[Location]:
+        """
+        Get all intentional root locations.
+
+        These are locations with parent_id=None AND is_explicit_root=True.
+        Used to display the top-level hierarchy.
+
+        Returns:
+            List of root Locations
+        """
+        return [
+            loc
+            for loc in self._locations.values()
+            if loc.parent_id is None and loc.is_explicit_root
+        ]
+
+    def get_unassigned_locations(self) -> List[Location]:
+        """
+        Get all unassigned locations (Inbox).
+
+        These are locations with parent_id=None AND is_explicit_root=False.
+        Typically discovered from the platform (HA areas) that need organization.
+
+        Returns:
+            List of unassigned Locations
+        """
+        return [
+            loc
+            for loc in self._locations.values()
+            if loc.parent_id is None and not loc.is_explicit_root
+        ]
+
+    def set_as_root(self, location_id: str) -> None:
+        """
+        Mark a location as an explicit root.
+
+        Use this to promote an unassigned location to be a top-level root.
+
+        Args:
+            location_id: The location ID
+
+        Raises:
+            ValueError: If location doesn't exist or has a parent
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+        if location.parent_id:
+            raise ValueError(f"Location '{location_id}' has a parent; cannot be root")
+
+        location.is_explicit_root = True
+        logger.info(f"Marked location as root: {location_id}")
 
     def get_location(self, location_id: str) -> Optional[Location]:
         """
