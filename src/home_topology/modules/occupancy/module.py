@@ -25,15 +25,19 @@ logger = logging.getLogger(__name__)
 
 class OccupancyModule(LocationModule):
     """
-    Occupancy tracking module.
+    Occupancy tracking module (v2.3).
 
     Features:
     - Hierarchical occupancy with parent/child propagation
-    - Identity tracking (who is in the room)
     - Source-tracked locking (multiple automations can lock independently)
     - Time-agnostic testing (no internal timers)
     - State persistence with stale data cleanup
-    - 7 event types: TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL
+    - Timer suspension during lock (suspend/resume)
+    - Holds and timers coexist (timers preserved during holds)
+
+    API:
+    - Events (from device mappings): trigger(), hold(), release()
+    - Commands (from automations/UI): vacate(), lock(), unlock(), unlock_all()
 
     Note: This module does NOT schedule timeout checks internally.
     The host integration (HA, test suite, etc.) is responsible for:
@@ -177,16 +181,12 @@ class OccupancyModule(LocationModule):
         if not event_type:
             return None
 
-        # Extract occupant_id if present
-        occupant_id = event.payload.get("occupant_id")
-
         return OccupancyEvent(
             location_id=location_id,
             event_type=event_type,
             source_id=entity_id,
             timestamp=event.timestamp,
             timeout=timeout,
-            occupant_id=occupant_id,
         )
 
     def _classify_signal(
@@ -240,7 +240,6 @@ class OccupancyModule(LocationModule):
                 location_id=transition.location_id,
                 payload={
                     "occupied": new_state.is_occupied,
-                    "active_occupants": list(new_state.active_occupants),
                     "active_holds": list(new_state.active_holds),
                     "locked_by": list(new_state.locked_by),
                     "is_locked": new_state.is_locked,
@@ -325,11 +324,13 @@ class OccupancyModule(LocationModule):
 
         return {
             "occupied": state.is_occupied,
-            "active_occupants": list(state.active_occupants),
             "active_holds": list(state.active_holds),
             "locked_by": list(state.locked_by),
             "is_locked": state.is_locked,
             "occupied_until": (state.occupied_until.isoformat() if state.occupied_until else None),
+            "timer_remaining": (
+                state.timer_remaining.total_seconds() if state.timer_remaining else None
+            ),
         }
 
     def dump_state(self) -> Dict:
@@ -402,17 +403,20 @@ class OccupancyModule(LocationModule):
             },
         }
 
-    # --- Direct API for sending events ---
+    # --- Events API (from device mappings) ---
 
     def trigger(
         self,
         location_id: str,
         source_id: str,
         timeout: Optional[int] = None,
-        occupant_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send a TRIGGER event (activity detected)."""
+        """Send a TRIGGER event (activity detected).
+
+        Sets location occupied and starts/extends timer.
+        Timer is always extended, even during active holds.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
@@ -422,7 +426,6 @@ class OccupancyModule(LocationModule):
             source_id=source_id,
             timestamp=now,
             timeout=timeout,
-            occupant_id=occupant_id,
         )
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
@@ -432,10 +435,13 @@ class OccupancyModule(LocationModule):
         self,
         location_id: str,
         source_id: str,
-        occupant_id: Optional[str] = None,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send a HOLD event (presence detected)."""
+        """Send a HOLD event (presence detected).
+
+        Sets location occupied indefinitely until released.
+        Timers continue to run in the background during holds.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
@@ -444,7 +450,6 @@ class OccupancyModule(LocationModule):
             event_type=EventType.HOLD,
             source_id=source_id,
             timestamp=now,
-            occupant_id=occupant_id,
         )
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
@@ -454,11 +459,15 @@ class OccupancyModule(LocationModule):
         self,
         location_id: str,
         source_id: str,
-        timeout: Optional[int] = None,
-        occupant_id: Optional[str] = None,
+        trailing_timeout: Optional[int] = None,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send a RELEASE event (presence cleared)."""
+        """Send a RELEASE event (presence cleared).
+
+        Removes hold from this source. When all holds are released:
+        - If existing timer is still valid (from TRIGGERs), use it
+        - Otherwise, start trailing timer
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
@@ -467,27 +476,31 @@ class OccupancyModule(LocationModule):
             event_type=EventType.RELEASE,
             source_id=source_id,
             timestamp=now,
-            timeout=timeout,
-            occupant_id=occupant_id,
+            timeout=trailing_timeout,
         )
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
 
+    # --- Commands API (from automations/UI) ---
+
     def vacate(
         self,
         location_id: str,
-        source_id: str,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send a VACATE event (force vacant)."""
+        """Force location vacant immediately.
+
+        Clears all timers and holds. Ignored if location is locked.
+        Use vacate_area() to clear an entire subtree.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.VACATE,
-            source_id=source_id,
+            source_id="command",
             timestamp=now,
         )
         result = self._engine.handle_event(event, now)
@@ -500,7 +513,15 @@ class OccupancyModule(LocationModule):
         source_id: str,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send a LOCK event (freeze state)."""
+        """Freeze current state (add lock from this source).
+
+        While locked:
+        - Events (TRIGGER, HOLD, RELEASE) are ignored
+        - Commands (VACATE) are ignored
+        - Timer is suspended and will resume when unlocked
+
+        Multiple sources can lock independently.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
@@ -520,7 +541,11 @@ class OccupancyModule(LocationModule):
         source_id: str,
         now: Optional[datetime] = None,
     ) -> None:
-        """Send an UNLOCK event (remove lock from this source)."""
+        """Remove lock from this source.
+
+        Location is only unfrozen when ALL sources have unlocked.
+        When unfrozen, suspended timer resumes.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
@@ -537,17 +562,20 @@ class OccupancyModule(LocationModule):
     def unlock_all(
         self,
         location_id: str,
-        source_id: str = "force_unlock",
         now: Optional[datetime] = None,
     ) -> None:
-        """Send an UNLOCK_ALL event (clear all locks)."""
+        """Force clear all locks.
+
+        Removes all sources from locked_by set.
+        Use for user override or emergency clear.
+        """
         assert self._engine is not None
         if now is None:
             now = datetime.now(timezone.utc)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.UNLOCK_ALL,
-            source_id=source_id,
+            source_id="force_unlock",
             timestamp=now,
         )
         result = self._engine.handle_event(event, now)

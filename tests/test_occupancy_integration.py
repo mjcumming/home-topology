@@ -138,10 +138,13 @@ def test_hierarchy_propagation(event_bus, occupancy_module, location_manager):
         assert state["occupied"] is True
 
 
-def test_identity_tracking(event_bus, occupancy_module, location_manager):
-    """Test identity tracking with presence sensors."""
+def test_presence_sensor_creates_hold(event_bus, occupancy_module, location_manager):
+    """Test presence sensors create HOLD events.
+
+    Note: v2.3 removed identity tracking (active_occupants).
+    """
     # Add presence sensor
-    location_manager.add_entity_to_location("ble_mike", "kitchen")
+    location_manager.add_entity_to_location("ble_presence", "kitchen")
 
     emitted_events = []
 
@@ -151,28 +154,27 @@ def test_identity_tracking(event_bus, occupancy_module, location_manager):
 
     event_bus.subscribe(capture_events)
 
-    # Mike arrives (presence sensor on)
+    # Presence detected
     event_bus.publish(
         Event(
             type="sensor.state_changed",
             source="ha",
-            entity_id="ble_mike",
+            entity_id="ble_presence",
             payload={
                 "old_state": "off",
                 "new_state": "on",
-                "occupant_id": "Mike",
             },
             timestamp=datetime.now(UTC),
         )
     )
 
-    # Check emitted event has occupant
+    # Check emitted event has active_holds
     kitchen_event = next(e for e in emitted_events if e.location_id == "kitchen")
-    assert "Mike" in kitchen_event.payload["active_occupants"]
+    assert "ble_presence" in kitchen_event.payload["active_holds"]
 
     # Check state
     state = occupancy_module.get_location_state("kitchen")
-    assert "Mike" in state["active_occupants"]
+    assert "ble_presence" in state["active_holds"]
     assert state["occupied"] is True
 
 

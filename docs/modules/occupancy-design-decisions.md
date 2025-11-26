@@ -1,16 +1,22 @@
 # Occupancy Module - Design Decisions
 
 **Status**: Approved  
-**Date**: 2025-11-25  
-**Version**: 2.2
+**Date**: 2025-11-26  
+**Version**: 2.3
 
 ---
 
 ## Overview
 
-This document captures the key design decisions for the Occupancy Module v2.1, which simplifies the architecture by moving signal classification to the integration layer and streamlining the event type system.
+This document captures the key design decisions for the Occupancy Module, which simplifies the architecture by moving signal classification to the integration layer and streamlining the event type system.
 
-**v2.1 Changes**: Removed `LocationKind` enum (was unused cruft from earlier design).
+**v2.3 Changes** (2025-11-26):
+- Decision 11: Events vs Commands - Separate API surfaces
+- Decision 12: Timer suspension during lock
+- Decision 13: Holds and timers coexist
+- Decision 14: Remove identity tracking (defer to PresenceModule)
+
+**v2.2 Changes** (2025-11-25): Removed `LocationKind` enum (was unused cruft from earlier design).
 
 ---
 
@@ -461,6 +467,202 @@ Default `False` is safer - if someone locked a room, they probably had a reason.
 
 ---
 
-**Approved**: 2025-11-25  
+## Decision 11: Events vs Commands - Separate API Surfaces
+
+### Context
+
+The original design treated all 7 signal types uniformly as "events" processed through the same code path. However, there's a conceptual distinction between device-originated signals and imperative commands.
+
+### Decision
+
+**Separate occupancy signals into Events and Commands:**
+
+| Category | Signal Types | Origin | API |
+|----------|-------------|--------|-----|
+| **Events** | TRIGGER, HOLD, RELEASE | Device state changes via integration | `trigger()`, `hold()`, `release()` methods |
+| **Commands** | VACATE, LOCK, UNLOCK, UNLOCK_ALL | Automations, UI, direct calls | `vacate()`, `lock()`, `unlock()`, `unlock_all()` methods |
+
+### Rationale
+
+1. **Conceptual clarity**: Events are "things that happened", commands are "do this now"
+2. **Different origins**: Events come from device mappings, commands from automations/UI
+3. **Simpler signatures**: Commands don't need `timeout` or device-related fields
+4. **Testing**: Commands can be tested independently from event processing
+5. **Integration design**: Natural separation - device mappings produce events, services expose commands
+
+### API
+
+```python
+class OccupancyModule:
+    # EVENTS (from device mappings)
+    def trigger(self, location_id, source_id, timeout=None): ...
+    def hold(self, location_id, source_id): ...
+    def release(self, location_id, source_id, trailing_timeout=None): ...
+    
+    # COMMANDS (from automations/UI)
+    def vacate(self, location_id): ...
+    def lock(self, location_id, source_id): ...
+    def unlock(self, location_id, source_id): ...
+    def unlock_all(self, location_id): ...
+```
+
+### Impact
+
+- Core library API changes (method signatures)
+- Integration layer uses events for device mappings, commands for services
+- Documentation updated to reflect distinction
+
+---
+
+## Decision 12: Timer Behavior While Locked - Suspend and Resume
+
+### Context
+
+When a location is locked, occupancy events are ignored. The question: what happens to an active timer?
+
+### Decision
+
+**Timer is suspended while locked and resumes when unlocked.**
+
+### State Addition
+
+```python
+@dataclass
+class LocationRuntimeState:
+    # ... existing fields ...
+    timer_remaining: timedelta | None = None  # Stored when locked
+```
+
+### Behavior
+
+```
+LOCK received (while timer active):
+  timer_remaining = occupied_until - now
+  occupied_until = None  # Timer paused
+
+UNLOCK received (when lock clears):
+  if timer_remaining is not None:
+    occupied_until = now + timer_remaining
+    timer_remaining = None  # Timer resumed
+```
+
+### Rationale
+
+1. **Expectation**: User locks at 5min remaining, unlocks later, expects 5min left
+2. **Fairness**: Lock shouldn't consume timer
+3. **Predictability**: State is truly "frozen"
+
+### Example
+
+```
+T+0:00  TRIGGER(10min)      → occupied_until = T+10:00
+T+3:00  LOCK                → timer_remaining = 7min, occupied_until = None
+T+8:00  UNLOCK              → occupied_until = T+15:00 (7min from now)
+T+15:00 Timer expires       → vacant
+```
+
+---
+
+## Decision 13: Holds and Timers Coexist
+
+### Context
+
+What happens when TRIGGER and HOLD events interact? Originally proposed that holds would "supersede" (clear) timers, but this loses contributions from motion sensors during presence holds.
+
+### Decision
+
+**Timers continue to be tracked during holds. When all holds release, the existing timer (if still valid) is used; otherwise trailing timer starts.**
+
+### Behavior
+
+```
+TRIGGER received:
+  occupied_until = max(occupied_until, now + timeout)  # Always extend
+  is_occupied = True
+
+HOLD received:
+  active_holds.add(source_id)
+  is_occupied = True
+  # occupied_until unchanged - timers keep running
+
+RELEASE received (last hold):
+  active_holds.remove(source_id)
+  if active_holds is empty:
+    if occupied_until is None or occupied_until <= now:
+      # No valid timer - start trailing timer
+      occupied_until = now + trailing_timeout
+    # else: keep existing timer from TRIGGERs
+```
+
+### Rationale
+
+1. **Real-world scenario**: Presence sensors have coverage gaps, motion sensors fill them
+2. **User expectation**: All sensors should contribute to occupancy
+3. **Simple implementation**: Just don't clear the timer on HOLD
+4. **Intuitive**: TRIGGER always extends, RELEASE checks what's left
+
+### Example
+
+```
+T+0:00  TRIGGER(10min)   → occupied until T+10:00
+T+1:00  HOLD             → occupied indefinitely, timer preserved at T+10:00
+T+2:00  TRIGGER(10min)   → occupied until T+12:00 (extended!)
+T+3:00  RELEASE          → occupied until T+12:00 (motion's timer kicks in)
+T+12:00 Expires          → vacant
+```
+
+If no TRIGGERs during hold:
+
+```
+T+0:00  HOLD             → occupied indefinitely
+T+5:00  RELEASE(2min)    → occupied until T+7:00 (trailing timer)
+T+7:00  Expires          → vacant
+```
+
+---
+
+## Decision 14: Remove Identity Tracking (Defer to PresenceModule)
+
+### Context
+
+The module included optional identity tracking via `occupant_id` on events and `active_occupants` in state, intended to answer "WHO is in this location?"
+
+### Decision
+
+**Remove identity tracking from OccupancyModule. Defer to a future PresenceModule.**
+
+### Removed
+
+- `occupant_id: str | None` from event methods
+- `active_occupants: set[str]` from `LocationRuntimeState`
+
+### Rationale
+
+1. **No supporting events**: No events populate this data meaningfully
+2. **No logic uses it**: Engine never checks `active_occupants`
+3. **Different concern**: Identity is person-centric; occupancy is location-centric
+4. **Separation of concerns**: Cleaner module with single responsibility
+5. **Future flexibility**: PresenceModule can track identity properly with dedicated design
+
+### PresenceModule (Future)
+
+A separate module for identity/person tracking:
+- Tracks WHO is where (person-centric)
+- Subscribes to `occupancy.changed` events
+- Maintains person entities with preferences
+- Answers "Where is Mike?"
+- Handles confidence/probability
+- Out of scope for occupancy module
+
+### Migration
+
+- Remove `occupant_id` parameter from event methods
+- Remove `active_occupants` from state model
+- Update tests that reference these fields
+- Document PresenceModule as future work
+
+---
+
+**Approved**: 2025-11-26  
 **Status**: Implementation Ready
 

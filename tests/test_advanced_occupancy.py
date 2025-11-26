@@ -704,12 +704,16 @@ class TestLockUnlockTimeoutInteraction:
         assert engine.state["kitchen"].is_occupied
         assert engine.state["kitchen"].is_locked
 
-    def test_unlock_after_timeout_triggers_vacancy(self, base_time):
-        """Unlocking after timeout period should evaluate and go vacant."""
+    def test_unlock_after_timeout_resumes_timer(self, base_time):
+        """v2.3: Timer is SUSPENDED during lock and RESUMES when unlocked.
+
+        This is different from old behavior where timer "expired while locked".
+        With timer suspension, the remaining time is preserved and resumes.
+        """
         configs = [LocationConfig(id="kitchen", default_timeout=60)]
         engine = OccupancyEngine(configs)
 
-        # Trigger with short timeout, then lock
+        # Trigger with 60s timeout, then lock immediately
         trigger = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.TRIGGER,
@@ -727,12 +731,19 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(lock, base_time)
 
-        # Wait past timeout (but still locked)
+        # Timer should be suspended with 60s remaining
+        state = engine.state["kitchen"]
+        assert state.timer_remaining is not None
+        assert state.timer_remaining.total_seconds() == 60
+        assert state.occupied_until is None  # Timer cleared during lock
+
+        # Wait past original timeout (but still locked)
         t1 = base_time + timedelta(seconds=120)
         engine.check_timeouts(t1)
         assert engine.state["kitchen"].is_occupied  # Still locked
+        assert engine.state["kitchen"].is_locked
 
-        # Unlock after timeout period
+        # Unlock after timeout period - timer RESUMES
         unlock = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.UNLOCK,
@@ -741,19 +752,25 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(unlock, t1)
 
-        # Should now be vacant (timer expired while locked)
-        assert not engine.state["kitchen"].is_occupied
-        assert not engine.state["kitchen"].is_locked
+        # Should still be occupied - timer resumed with 60s remaining
+        state = engine.state["kitchen"]
+        assert state.is_occupied  # Timer resumed
+        assert not state.is_locked
+        assert state.timer_remaining is None  # Cleared after resume
+        assert state.occupied_until == t1 + timedelta(seconds=60)
+
+        # Now wait for resumed timer to expire
+        t2 = t1 + timedelta(seconds=61)
+        engine.check_timeouts(t2)
+        assert not engine.state["kitchen"].is_occupied  # Now vacant
 
     def test_multiple_locks_require_all_unlocks(self, base_time):
-        """Multiple locks prevent events but UNLOCK triggers state re-evaluation.
+        """Multiple locks preserve state. Timer resumes when all locks cleared.
 
-        Implementation note: When UNLOCK is processed, it removes the source
-        from locked_by and then re-evaluates state. If timer has expired,
-        the location may become vacant even if other locks remain.
-        This tests the behavior where timer is still active when unlocking.
+        v2.3: Timer is suspended during lock. When the last lock is removed,
+        the timer resumes with remaining time.
         """
-        # Use longer timeout so timer is still active during unlocks
+        # Use 300s timeout
         configs = [LocationConfig(id="kitchen", default_timeout=300)]
         engine = OccupancyEngine(configs)
 
@@ -776,11 +793,13 @@ class TestLockUnlockTimeoutInteraction:
             engine.handle_event(lock, base_time)
 
         assert len(engine.state["kitchen"].locked_by) == 3
+        # Timer suspended with 300s remaining
+        assert engine.state["kitchen"].timer_remaining.total_seconds() == 300
 
-        # Shortly after (timer still active at 60s, expires at 300s)
+        # Shortly after (60s)
         t1 = base_time + timedelta(seconds=60)
 
-        # Unlock one at a time
+        # Unlock one at a time - state preserved while still locked
         unlock_a = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.UNLOCK,
@@ -789,7 +808,7 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(unlock_a, t1)
         assert engine.state["kitchen"].is_locked  # Still locked by 2
-        assert engine.state["kitchen"].is_occupied  # Timer still active
+        assert engine.state["kitchen"].is_occupied  # State preserved
 
         unlock_b = OccupancyEvent(
             location_id="kitchen",
@@ -799,9 +818,9 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(unlock_b, t1)
         assert engine.state["kitchen"].is_locked  # Still locked by 1
-        assert engine.state["kitchen"].is_occupied  # Timer still active
+        assert engine.state["kitchen"].is_occupied  # State preserved
 
-        # Final unlock
+        # Final unlock - timer resumes
         unlock_user = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.UNLOCK,
@@ -810,21 +829,26 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(unlock_user, t1)
 
-        # Now unlocked, but still occupied (timer active until 300s)
+        # Now unlocked, timer resumed with 300s from t1
         assert not engine.state["kitchen"].is_locked
-        assert engine.state["kitchen"].is_occupied  # Timer still active
+        assert engine.state["kitchen"].is_occupied  # Timer resumed
+        assert engine.state["kitchen"].occupied_until == t1 + timedelta(seconds=300)
 
-        # After timeout expires
-        t2 = base_time + timedelta(seconds=301)
+        # After resumed timeout expires (t1 + 301s, not base + 301s)
+        t2 = t1 + timedelta(seconds=301)
         engine.check_timeouts(t2)
         assert not engine.state["kitchen"].is_occupied
 
     def test_unlock_all_clears_all_locks(self, base_time):
-        """UNLOCK_ALL clears all locks regardless of source."""
+        """UNLOCK_ALL clears all locks and resumes timer.
+
+        v2.3: Timer is suspended during lock. UNLOCK_ALL clears all locks
+        and resumes the timer with remaining time.
+        """
         configs = [LocationConfig(id="kitchen", default_timeout=60)]
         engine = OccupancyEngine(configs)
 
-        # Trigger and add multiple locks
+        # Trigger with 60s timeout and add multiple locks
         trigger = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.TRIGGER,
@@ -843,11 +867,13 @@ class TestLockUnlockTimeoutInteraction:
             engine.handle_event(lock, base_time)
 
         assert len(engine.state["kitchen"].locked_by) == 5
+        # Timer suspended with 60s remaining
+        assert engine.state["kitchen"].timer_remaining.total_seconds() == 60
 
-        # Wait past timeout
+        # Wait some time (120s)
         t1 = base_time + timedelta(seconds=120)
 
-        # Force unlock all
+        # Force unlock all - timer resumes
         unlock_all = OccupancyEvent(
             location_id="kitchen",
             event_type=EventType.UNLOCK_ALL,
@@ -856,10 +882,16 @@ class TestLockUnlockTimeoutInteraction:
         )
         engine.handle_event(unlock_all, t1)
 
-        # Should be unlocked and vacant
+        # Should be unlocked, timer resumed with 60s from t1
         assert not engine.state["kitchen"].is_locked
         assert len(engine.state["kitchen"].locked_by) == 0
-        assert not engine.state["kitchen"].is_occupied
+        assert engine.state["kitchen"].is_occupied  # Timer resumed
+        assert engine.state["kitchen"].occupied_until == t1 + timedelta(seconds=60)
+
+        # Wait for resumed timer to expire
+        t2 = t1 + timedelta(seconds=61)
+        engine.check_timeouts(t2)
+        assert not engine.state["kitchen"].is_occupied  # Now vacant
 
     def test_unlock_with_expired_timer_causes_vacancy(self, base_time):
         """UNLOCK with expired timer triggers vacancy even with remaining locks.
@@ -1221,8 +1253,8 @@ class TestCompleteIntegrationScenario:
         # Bathroom: vacant (timeout expired)
         assert not module.get_location_state("bathroom")["occupied"]
 
-        # Release bedroom hold
-        module.release("bedroom", "presence", timeout=30, now=t1)
+        # Release bedroom hold (v2.3: parameter renamed to trailing_timeout)
+        module.release("bedroom", "presence", trailing_timeout=30, now=t1)
 
         # Bedroom still occupied (trailing timeout)
         assert module.get_location_state("bedroom")["occupied"]

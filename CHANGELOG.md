@@ -17,6 +17,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0-alpha] - 2025-11-26
+
+OccupancyModule v2.3 - Major API improvements and simplified state model.
+
+### ⚠️ BREAKING CHANGES
+- **Removed `active_occupants`**: Identity tracking removed from OccupancyModule (deferred to future PresenceModule)
+- **Removed `occupant_id` parameter**: No longer accepted by trigger(), hold(), release()
+- **Renamed `timeout` to `trailing_timeout`**: In release() method for clarity
+- **Removed `source_id` from commands**: vacate() and unlock_all() no longer require source_id
+- **Timer suspension during lock**: Timers now pause when locked and resume when unlocked (behavior change)
+
+### Added
+- `timer_remaining` field in LocationRuntimeState for lock suspension/resume
+- Device Type Presets documentation for UI device mapping
+- Events vs Commands API documentation
+
+### Changed
+- **Events API** (from device mappings): trigger(), hold(), release()
+- **Commands API** (from automations/UI): vacate(), lock(), unlock(), unlock_all()
+- Timer suspension: Timers pause during lock and resume with remaining time on unlock
+- Holds and timers coexist: TRIGGER events during holds extend the background timer
+- RELEASE checks existing timer before starting trailing timer
+- Updated all tests for new v2.3 behavior (88 tests passing)
+
+### Documentation
+- Moved integration-guide.md to docs/integration/
+- Updated ui-design.md with Device Mapping section
+- Added Decisions 11-14 to occupancy-design-decisions.md
+- Updated occupancy-design.md with v2.3 state model
+- Updated integration-guide.md for v2.3 API
+
+---
+
 ## [0.1.1-alpha] - 2025-11-25
 
 Quality improvements and comprehensive test coverage.

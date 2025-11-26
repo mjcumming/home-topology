@@ -267,116 +267,108 @@ class TestOccupancyModuleHierarchyPropagation:
         logger.info("✓ Occupancy successfully propagated up hierarchy")
 
 
-class TestOccupancyModuleIdentityTracking:
-    """Test suite for identity tracking with presence sensors."""
+class TestOccupancyModulePresenceSensors:
+    """Test suite for presence sensors (HOLD/RELEASE events).
 
-    def test_presence_sensor_tracks_identity(self, event_bus, occupancy_module, location_manager):
-        """Test that presence sensors track who is in the room."""
+    Note: v2.3 removed identity tracking (active_occupants).
+    Identity tracking is deferred to a future PresenceModule.
+    """
+
+    def test_presence_sensor_creates_hold(self, event_bus, occupancy_module, location_manager):
+        """Test that presence sensors create HOLD events."""
         logger.info("=" * 80)
-        logger.info("TEST: Presence sensor tracks identity")
+        logger.info("TEST: Presence sensor creates HOLD")
         logger.info("=" * 80)
 
-        # Add presence sensor for Mike
+        # Add presence sensor
         logger.info("Adding presence sensor to kitchen...")
-        location_manager.add_entity_to_location("ble_mike", "kitchen")
-        logger.debug("  ✓ ble_mike -> kitchen")
+        location_manager.add_entity_to_location("ble_presence", "kitchen")
+        logger.debug("  ✓ ble_presence -> kitchen")
 
         emitted_events = []
 
         def capture_events(event: Event):
             if event.type == "occupancy.changed":
                 logger.info(f"📢 Occupancy changed: {event.location_id}")
-                logger.debug(f"   Active occupants: {event.payload.get('active_occupants', [])}")
                 emitted_events.append(event)
 
         event_bus.subscribe(capture_events)
 
-        logger.info("Simulating Mike's arrival (presence sensor on)...")
+        logger.info("Simulating presence detected...")
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
                 source="ha",
-                entity_id="ble_mike",
+                entity_id="ble_presence",
                 payload={
                     "old_state": "off",
                     "new_state": "on",
-                    "occupant_id": "Mike",
                 },
                 timestamp=datetime.now(UTC),
             )
         )
 
-        logger.info("Verifying occupant tracking...")
+        logger.info("Verifying HOLD was created...")
         kitchen_events = [e for e in emitted_events if e.location_id == "kitchen"]
         assert len(kitchen_events) > 0
 
-        kitchen_event = kitchen_events[0]
-        logger.info(f"Kitchen active occupants: {kitchen_event.payload['active_occupants']}")
-        assert "Mike" in kitchen_event.payload["active_occupants"]
-        logger.info("✓ Mike tracked in active_occupants")
-
-        logger.info("Checking state...")
         state = occupancy_module.get_location_state("kitchen")
         logger.debug(f"Kitchen state: {state}")
-        assert "Mike" in state["active_occupants"]
         assert state["occupied"] is True
-        logger.info("✓ Identity successfully tracked")
+        assert "ble_presence" in state["active_holds"]
+        logger.info("✓ Presence sensor created HOLD")
 
-    def test_presence_sensor_departure(self, event_bus, occupancy_module, location_manager):
-        """Test that presence sensor off removes identity."""
+    def test_presence_sensor_release_starts_trailing_timer(
+        self, event_bus, occupancy_module, location_manager
+    ):
+        """Test that presence sensor off triggers RELEASE and trailing timer."""
         logger.info("=" * 80)
-        logger.info("TEST: Presence sensor departure removes identity")
+        logger.info("TEST: Presence sensor RELEASE starts trailing timer")
         logger.info("=" * 80)
 
         # Add presence sensor
-        location_manager.add_entity_to_location("ble_mike", "kitchen")
+        location_manager.add_entity_to_location("ble_presence", "kitchen")
 
-        logger.info("Step 1: Mike arrives")
+        logger.info("Step 1: Presence detected (HOLD)")
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
                 source="ha",
-                entity_id="ble_mike",
+                entity_id="ble_presence",
                 payload={
                     "old_state": "off",
                     "new_state": "on",
-                    "occupant_id": "Mike",
                 },
                 timestamp=datetime.now(UTC),
             )
         )
 
         state = occupancy_module.get_location_state("kitchen")
-        logger.info(
-            f"After arrival: occupied={state['occupied']}, occupants={state['active_occupants']}"
-        )
-        assert "Mike" in state["active_occupants"]
+        assert state["occupied"] is True
+        assert "ble_presence" in state["active_holds"]
 
-        logger.info("Step 2: Mike leaves (presence sensor off)")
+        logger.info("Step 2: Presence cleared (RELEASE)")
         event_bus.publish(
             Event(
                 type="sensor.state_changed",
                 source="ha",
-                entity_id="ble_mike",
+                entity_id="ble_presence",
                 payload={
                     "old_state": "on",
                     "new_state": "off",
-                    "occupant_id": "Mike",
                 },
                 timestamp=datetime.now(UTC),
             )
         )
 
         state = occupancy_module.get_location_state("kitchen")
-        logger.info(
-            f"After departure: occupied={state['occupied']}, occupants={state['active_occupants']}"
-        )
-        logger.debug(f"Full state: {state}")
+        logger.info(f"After RELEASE: occupied={state['occupied']}, holds={state['active_holds']}")
 
-        # Note: Kitchen might still be occupied due to timeout after hold ends
-        # But Mike should be removed from active_occupants
-        assert "Mike" not in state["active_occupants"]
-        logger.info("✓ Mike removed from active occupants")
+        # Hold should be removed, but trailing timer keeps room occupied
+        assert "ble_presence" not in state["active_holds"]
+        assert state["occupied"] is True  # Trailing timer active
+        assert state["occupied_until"] is not None  # Timer set
+        logger.info("✓ RELEASE started trailing timer")
 
 
 class TestOccupancyModuleStatePersistence:
@@ -771,7 +763,7 @@ class TestOccupancyModuleLockEvents:
 
         # Force unlock all
         logger.info("Force unlocking all...")
-        occupancy_module.unlock_all("kitchen", "user_override", now=now)
+        occupancy_module.unlock_all("kitchen", now=now)
 
         state2 = occupancy_module.get_location_state("kitchen")
         assert state2["is_locked"] is False
@@ -779,7 +771,11 @@ class TestOccupancyModuleLockEvents:
         logger.info("✓ All locks cleared")
 
     def test_locked_state_ignores_events(self, occupancy_module):
-        """Test that locked state ignores normal events."""
+        """Test that locked state ignores normal events.
+
+        v2.3: Timer is suspended during lock (stored in timer_remaining).
+        Events are ignored while locked. Timer resumes when unlocked.
+        """
         logger.info("=" * 80)
         logger.info("TEST: Locked state ignores normal events")
         logger.info("=" * 80)
@@ -788,14 +784,17 @@ class TestOccupancyModuleLockEvents:
 
         # Set to occupied and locked
         logger.info("Setting kitchen to occupied and locked...")
-        occupancy_module.trigger("kitchen", "motion", now=now)
+        occupancy_module.trigger("kitchen", "motion", timeout=300, now=now)
         occupancy_module.lock("kitchen", "manual_lock", now=now)
 
         state1 = occupancy_module.get_location_state("kitchen")
-        occupied_until_1 = state1["occupied_until"]
+        # v2.3: Timer is suspended, stored in timer_remaining
+        timer_remaining_1 = state1["timer_remaining"]
+        assert timer_remaining_1 == 300  # 300 seconds remaining
+        assert state1["occupied_until"] is None  # Timer cleared during lock
         assert state1["occupied"] is True
         assert state1["is_locked"] is True
-        logger.info("✓ Kitchen occupied and locked")
+        logger.info("✓ Kitchen occupied and locked, timer suspended")
 
         # Try to trigger another event (should be ignored)
         logger.info("Sending another trigger event (should be ignored)...")
@@ -803,13 +802,13 @@ class TestOccupancyModuleLockEvents:
         occupancy_module.trigger("kitchen", "motion2", timeout=600, now=future)
 
         state2 = occupancy_module.get_location_state("kitchen")
-        # Timer should not have been extended
-        assert state2["occupied_until"] == occupied_until_1
+        # Timer_remaining should not have changed
+        assert state2["timer_remaining"] == timer_remaining_1
         logger.info("✓ Trigger event ignored (as expected)")
 
         # VACATE should also be ignored
         logger.info("Sending VACATE event (should be ignored)...")
-        occupancy_module.vacate("kitchen", "light_off", now=future)
+        occupancy_module.vacate("kitchen", now=future)
 
         state3 = occupancy_module.get_location_state("kitchen")
         assert state3["occupied"] is True  # Still occupied
@@ -839,8 +838,8 @@ class TestOccupancyModuleDirectAPI:
         assert state1["occupied"] is True
         assert "presence_sensor" in state1["active_holds"]
 
-        # Release
-        occupancy_module.release("kitchen", "presence_sensor", timeout=60, now=now)
+        # Release (v2.3: parameter renamed to trailing_timeout)
+        occupancy_module.release("kitchen", "presence_sensor", trailing_timeout=60, now=now)
 
         state2 = occupancy_module.get_location_state("kitchen")
         assert state2["occupied"] is True  # Still occupied (trailing timeout)
@@ -854,8 +853,8 @@ class TestOccupancyModuleDirectAPI:
         occupancy_module.trigger("kitchen", "motion", now=now)
         assert occupancy_module.get_location_state("kitchen")["occupied"] is True
 
-        # Then vacate
-        occupancy_module.vacate("kitchen", "light_off", now=now)
+        # Then vacate (v2.3: no source_id parameter)
+        occupancy_module.vacate("kitchen", now=now)
         assert occupancy_module.get_location_state("kitchen")["occupied"] is False
 
 

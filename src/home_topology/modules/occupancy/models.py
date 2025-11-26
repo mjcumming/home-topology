@@ -3,37 +3,42 @@
 This module defines the core data structures used throughout the occupancy system.
 All state classes are frozen (immutable) to support functional programming.
 
+v2.3 Changes:
+- Removed active_occupants (identity tracking deferred to PresenceModule)
+- Added timer_remaining for lock suspension/resume
+- Removed occupant_id from OccupancyEvent
+
 Licensed under MIT License
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import FrozenSet
 
 
 class EventType(Enum):
-    """The mechanical behavior of an occupancy event.
+    """The type of occupancy signal.
 
-    Occupancy Signals (sent by integrations):
+    Events (from device state changes via integration):
         TRIGGER: Activity detected → occupied + timer
         HOLD: Presence detected → occupied indefinitely
-        RELEASE: Presence cleared → trailing timer starts
-        VACATE: Force vacant immediately
+        RELEASE: Presence cleared → uses existing timer or starts trailing timer
 
-    State Control:
+    Commands (from automations/UI):
+        VACATE: Force vacant immediately
         LOCK: Add source to locked_by set (freeze state)
         UNLOCK: Remove source from locked_by set
         UNLOCK_ALL: Clear all locks (force unlock)
     """
 
-    # Occupancy signals
+    # Events (from device mappings)
     TRIGGER = "trigger"  # Activity detected → occupied + timer
     HOLD = "hold"  # Presence detected → occupied indefinitely
-    RELEASE = "release"  # Presence cleared → trailing timer starts
-    VACATE = "vacate"  # Force vacant immediately
+    RELEASE = "release"  # Presence cleared → check timer or start trailing
 
-    # State control
+    # Commands (from automations/UI)
+    VACATE = "vacate"  # Force vacant immediately
     LOCK = "lock"  # Add source to locked_by
     UNLOCK = "unlock"  # Remove source from locked_by
     UNLOCK_ALL = "unlock_all"  # Clear all locks
@@ -73,8 +78,8 @@ class LocationRuntimeState:
 
     Attributes:
         is_occupied: Whether the location is currently occupied.
-        occupied_until: Timer expiration (None = indefinite hold).
-        active_occupants: Identity tracking (optional).
+        occupied_until: Timer expiration (None = indefinite hold or vacant).
+        timer_remaining: Remaining time when locked (for suspend/resume).
         active_holds: Source IDs with active holds.
         locked_by: Set of source IDs that have locked this location.
                    Location is locked when this set is non-empty.
@@ -82,7 +87,7 @@ class LocationRuntimeState:
 
     is_occupied: bool = False
     occupied_until: datetime | None = None
-    active_occupants: FrozenSet[str] = field(default_factory=frozenset)
+    timer_remaining: timedelta | None = None  # Stored when locked for resume
     active_holds: FrozenSet[str] = field(default_factory=frozenset)
     locked_by: FrozenSet[str] = field(default_factory=frozenset)
 
@@ -94,7 +99,11 @@ class LocationRuntimeState:
 
 @dataclass(frozen=True)
 class OccupancyEvent:
-    """An occupancy event sent by the integration layer.
+    """An occupancy event for internal engine processing.
+
+    Note: This is used internally by the engine. The public API uses
+    separate methods: trigger(), hold(), release() for events and
+    vacate(), lock(), unlock(), unlock_all() for commands.
 
     Attributes:
         location_id: Target location.
@@ -102,7 +111,6 @@ class OccupancyEvent:
         source_id: Unique device/source ID (e.g. "binary_sensor.kitchen_motion").
         timestamp: When the event occurred.
         timeout: Optional timeout override in seconds (uses location default if None).
-        occupant_id: Optional identity tracking.
     """
 
     location_id: str
@@ -110,7 +118,6 @@ class OccupancyEvent:
     source_id: str
     timestamp: datetime
     timeout: int | None = None  # Seconds, uses location default if None
-    occupant_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,53 +1,52 @@
 # Occupancy Module - Implementation Status
 
-**Status**: v2.0 Design Approved  
-**Last Updated**: 2025-01-27  
-**Version**: 2.0.0
+**Status**: v2.3 Design Approved  
+**Last Updated**: 2025-11-26  
+**Version**: 2.3.0
 
 ---
 
 ## Overview
 
-This document tracks the implementation status of the Occupancy Module. The module is transitioning from v1 (complex with confidence scoring) to v2 (simplified with integration-layer classification).
+This document tracks the implementation status of the Occupancy Module. The module has evolved through several design iterations:
 
-**Key Design Change**: Event classification moved to integration layer. See `occupancy-design-decisions.md` for full rationale.
+- **v1**: Complex with confidence scoring (deprecated)
+- **v2.0**: Simplified with integration-layer classification
+- **v2.3**: Events vs Commands separation, timer improvements
+
+**Key Design Changes (v2.3)**:
+- Separated Events (trigger/hold/release) from Commands (vacate/lock/unlock)
+- Timer suspension during lock (suspend/resume)
+- Holds and timers coexist (timers preserved during holds)
+- Removed identity tracking (deferred to PresenceModule)
+
+See `occupancy-design-decisions.md` for full rationale (Decisions 11-14).
 
 ---
 
-## v2.0 Architecture (Current Design)
+## v2.3 Architecture (Current Design)
 
-### Event Types (7 total)
+### Events vs Commands
 
-| Event | Purpose | Status |
-|-------|---------|--------|
-| `TRIGGER` | Activity detected → occupied + timer | 🔄 Rename from MOMENTARY |
-| `HOLD` | Presence started → occupied indefinitely | 🔄 Rename from HOLD_START |
-| `RELEASE` | Presence ended → trailing timer | 🔄 Rename from HOLD_END |
-| `VACATE` | Force vacant immediately | ✨ New |
-| `LOCK` | Add source to `locked_by` set | 🔄 Split from LOCK_CHANGE |
-| `UNLOCK` | Remove source from `locked_by` set | 🔄 Split from LOCK_CHANGE |
-| `UNLOCK_ALL` | Clear all locks (force unlock) | ✨ New |
+| Category | Signals | Origin | API |
+|----------|---------|--------|-----|
+| **Events** | TRIGGER, HOLD, RELEASE | Device mappings | `trigger()`, `hold()`, `release()` |
+| **Commands** | VACATE, LOCK, UNLOCK, UNLOCK_ALL | Automations/UI | `vacate()`, `lock()`, `unlock()`, `unlock_all()` |
 
-### Removed Features
+### State Structure
 
-| Feature | Why Removed |
-|---------|-------------|
-| **Confidence Scoring** | Binary occupied/vacant is sufficient with modern sensors |
-| **Secondary Signals** | No confidence = no need for boosters |
-| **Category-based Timeouts** | Integration sets timeout per event |
-| **PROPAGATED Event** | Moved to internal logic |
-| **MANUAL Event** | Replaced by TRIGGER with explicit timeout |
-| **LockState Enum** | Replaced by `locked_by: set[str]` for source tracking |
+```python
+@dataclass(frozen=True)
+class LocationRuntimeState:
+    is_occupied: bool = False
+    occupied_until: datetime | None = None
+    timer_remaining: timedelta | None = None  # NEW: for lock suspension
+    active_holds: set[str] = field(default_factory=set)
+    locked_by: set[str] = field(default_factory=set)
+    # REMOVED: active_occupants (deferred to PresenceModule)
+```
 
-### New Features
-
-| Feature | Purpose |
-|---------|---------|
-| **Lock Source Tracking** | `locked_by: set[str]` shows WHO locked the location |
-| **UNLOCK_ALL Event** | Force clear all locks regardless of who locked |
-| **Independent Locks** | Multiple automations can lock without stepping on each other |
-
-### Location Configuration (Simplified)
+### Location Configuration
 
 ```python
 {
@@ -58,25 +57,11 @@ This document tracks the implementation status of the Occupancy Module. The modu
 }
 ```
 
-### State Structure (Simplified)
-
-```python
-@dataclass(frozen=True)
-class LocationRuntimeState:
-    is_occupied: bool = False
-    occupied_until: datetime | None = None
-    active_holds: set[str] = field(default_factory=set)
-    active_occupants: set[str] = field(default_factory=set)
-    locked_by: set[str] = field(default_factory=set)  # WHO locked this
-```
-
 ---
 
 ## Implementation Phases
 
-### Phase 1: Core State Machine ✅ COMPLETE (v1)
-
-**Status**: Working, needs migration to v2 event types
+### Phase 1: Core State Machine ✅ COMPLETE
 
 - ✅ State machine with occupied, holds, locks
 - ✅ Hierarchical propagation (child → parent)
@@ -86,126 +71,145 @@ class LocationRuntimeState:
 - ✅ Time-agnostic design
 - ✅ Seconds-based time units
 
-### Phase 2: v2 Migration 🔄 IN PROGRESS
+### Phase 2: v2.3 Migration 🔄 IN PROGRESS
 
-**Status**: Design approved, implementation pending
+**Documentation** ✅
+- [x] Update design decisions (Decisions 11-14)
+- [x] Update design document (occupancy-design.md)
+- [x] Update implementation status (this document)
+- [ ] Update integration guide (occupancy-integration.md)
 
-- [ ] Update EventType enum (6 new types)
-- [ ] Remove confidence scoring from state/events
-- [ ] Simplify OccupancyEvent (remove category, add timeout)
-- [ ] Move propagation to internal logic
-- [ ] Update engine for new event types
-- [ ] Update module event translation
-- [ ] Update tests for new event types
+**Code Changes** (Pending)
+- [ ] `models.py` - Remove `active_occupants` field
+- [ ] `models.py` - Add `timer_remaining` field
+- [ ] `models.py` - Remove `occupant_id` from event parameters
+- [ ] `module.py` - Separate events vs commands API
+- [ ] `module.py` - Remove `occupant_id` parameter
+- [ ] `engine.py` - Timer suspension during lock
+- [ ] `engine.py` - Holds and timers coexistence logic
+- [ ] `engine.py` - RELEASE checks existing timer before trailing
+- [ ] Tests - Timer suspension tests
+- [ ] Tests - Hold + timer coexistence tests
+- [ ] Tests - Remove identity tracking tests
 
 ### Phase 3: Advanced Features ❌ DEFERRED
-
-**Status**: Not planned for v2.0
 
 - ❌ Adaptive timeout mode
 - ❌ Rule-based engine
 - ❌ Multi-modal sensor fusion
 - ❌ Activity recognition
+- ❌ Identity/Person tracking (future PresenceModule)
 
 ---
 
-## Design vs Implementation Comparison
+## v2.3 Behavior Changes
 
-### v1 → v2 Changes
+### Timer During Lock (NEW)
 
-| Aspect | v1 (Current Code) | v2 (Target) |
-|--------|-------------------|-------------|
-| **Event Types** | MOMENTARY, HOLD_START, HOLD_END, MANUAL, LOCK_CHANGE, PROPAGATED | TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL |
-| **Event Classification** | Core library (pattern matching) | Integration layer |
-| **Confidence** | 3 levels (1.0, 0.8, 0.0) | None (binary) |
-| **Timeouts** | Per-category dictionary | Location default + event override |
-| **OccupancyEvent.category** | Required | Removed |
-| **OccupancyEvent.timeout** | Via duration field | Explicit timeout field |
-| **Lock State** | `lock_state: LockState` enum | `locked_by: set[str]` (source tracking) |
+**Before (v2.0)**: Timer behavior during lock was undefined.
 
-### What Stays the Same
+**After (v2.3)**: Timer is suspended and resumes when unlocked.
 
-| Feature | Status |
-|---------|--------|
-| LocationRuntimeState structure | ✅ Keep (is_occupied, occupied_until, active_holds, lock_state) |
-| Hierarchical propagation | ✅ Keep (internal logic) |
-| FOLLOW_PARENT strategy | ✅ Keep |
-| Lock/unlock behavior | ✅ Keep (split into explicit events) |
-| State persistence | ✅ Keep |
-| Time-agnostic design | ✅ Keep |
+```
+T+0:00  TRIGGER(10min)  → occupied_until = T+10:00
+T+3:00  LOCK            → timer_remaining = 7min, occupied_until = None
+T+8:00  UNLOCK          → occupied_until = T+15:00 (7min from now)
+```
 
----
+### Holds and Timers (NEW)
 
-## Testing Status
+**Before (v2.0)**: Unclear if timers were cleared during holds.
 
-### Event Type Coverage (v1)
+**After (v2.3)**: Timers continue during holds. When holds release, existing timer is used if still valid.
 
-| v1 Event Type | Tested | v2 Mapping |
-|---------------|--------|------------|
-| MOMENTARY | ✅ | → TRIGGER |
-| HOLD_START | ✅ | → HOLD |
-| HOLD_END | ✅ | → RELEASE |
-| MANUAL | ✅ | → TRIGGER (with timeout) |
-| LOCK_CHANGE | ✅ | → LOCK / UNLOCK |
-| PROPAGATED | ✅ (indirect) | → Internal logic |
+```
+T+0:00  TRIGGER(10min)  → occupied_until = T+10:00
+T+1:00  HOLD            → occupied indefinitely, timer preserved
+T+2:00  TRIGGER(10min)  → timer extended to T+12:00
+T+3:00  RELEASE         → occupied_until = T+12:00 (not trailing timer)
+```
 
-### Tests to Update for v2
+### Identity Tracking (REMOVED)
 
-- [ ] Rename test methods for new event names
-- [ ] Add VACATE event tests
-- [ ] Split LOCK/UNLOCK tests
-- [ ] Remove confidence assertions
-- [ ] Update event construction (remove category)
+**Before (v2.0)**: `active_occupants` and `occupant_id` were optional.
+
+**After (v2.3)**: Removed entirely. Identity tracking deferred to future PresenceModule.
 
 ---
 
-## Migration Checklist
+## Code Migration Checklist
 
-### Documentation ✅
+### models.py
 
-- [x] Create design decisions document (`occupancy-design-decisions.md`)
-- [x] Update implementation status (this document)
-- [ ] Update design document (`occupancy-design.md`)
-- [ ] Update integration guide (`occupancy-integration.md`)
-- [ ] Archive rule-engine documents
+```python
+# REMOVE
+active_occupants: set[str] = field(default_factory=set)
+occupant_id: str | None = None
 
-### Code Changes (Pending)
+# ADD
+timer_remaining: timedelta | None = None
+```
 
-- [ ] `models.py` - New EventType enum
-- [ ] `models.py` - Simplify OccupancyEvent
-- [ ] `engine.py` - Handle new event types
-- [ ] `engine.py` - Remove confidence
-- [ ] `engine.py` - Internal propagation
-- [ ] `module.py` - Update event translation
-- [ ] `module.py` - Remove confidence emission
-- [ ] Tests - Update for v2
+### module.py
+
+```python
+# CHANGE: Separate event methods from command methods
+
+# Events (from device mappings)
+def trigger(self, location_id, source_id, timeout=None): ...
+def hold(self, location_id, source_id): ...
+def release(self, location_id, source_id, trailing_timeout=None): ...
+
+# Commands (from automations/UI)
+def vacate(self, location_id): ...
+def lock(self, location_id, source_id): ...
+def unlock(self, location_id, source_id): ...
+def unlock_all(self, location_id): ...
+
+# REMOVE: occupant_id parameter from all methods
+```
+
+### engine.py
+
+```python
+# ADD: Timer suspension logic in lock/unlock
+# ADD: Timer preservation logic in hold
+# ADD: Timer check in release (use existing timer if valid)
+```
 
 ---
 
-## Known Limitations
+## Testing Checklist
 
-### Current (v1)
+### New Tests Needed
 
-- Category-based pattern matching is hardcoded
-- Confidence scoring is overly simple
-- LOCK_CHANGE is a toggle (ambiguous)
+- [ ] Timer suspension during lock
+- [ ] Timer resume after unlock
+- [ ] TRIGGER during active hold extends timer
+- [ ] RELEASE uses existing timer if > trailing timeout
+- [ ] RELEASE uses trailing timeout if no existing timer
+- [ ] Multiple TRIGGERs during hold accumulate correctly
 
-### After v2
+### Tests to Update
 
-- **Integration burden**: Integrations must classify events
-- **No confidence**: Can't express "maybe occupied"
-- **Binary state**: No nuanced occupancy levels
+- [ ] Remove `active_occupants` assertions
+- [ ] Remove `occupant_id` from event construction
+- [ ] Update API calls to use new method signatures
+
+### Tests to Remove
+
+- [ ] Any identity tracking tests
 
 ---
 
 ## References
 
-- **Design Decisions**: `occupancy-design-decisions.md` (v2 rationale)
-- **Original Design**: `occupancy-design.md` (historical, needs update)
+- **Design Decisions**: `occupancy-design-decisions.md` (Decisions 1-14)
+- **Design Document**: `occupancy-design.md` (v2.3)
 - **Integration Guide**: `occupancy-integration.md` (needs update)
-- **Rule Engine Docs**: Archived (approach not used)
+- **Future**: PresenceModule for identity tracking
 
 ---
 
-**Current Status**: v2 Design Approved ✅  
-**Next Step**: Update remaining documentation, then implement code changes
+**Current Status**: v2.3 Design Approved ✅  
+**Next Step**: Implement code changes (models.py, module.py, engine.py)

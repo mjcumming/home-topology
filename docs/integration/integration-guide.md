@@ -1,8 +1,14 @@
 # home-topology Integration Guide
 
-**Version**: 1.0  
-**Date**: 2025.11.24  
+**Version**: 2.3  
+**Date**: 2025.11.26  
 **Audience**: Platform developers integrating home-topology into Home Assistant.
+
+> **v2.3 Changes**: 
+> - Events vs Commands API separation
+> - Timer suspension during lock
+> - Holds and timers coexist
+> - Removed identity tracking (active_occupants) - deferred to PresenceModule
 
 ---
 
@@ -186,7 +192,7 @@ schema = occupancy.location_config_schema()
 
 # Read module state
 state = occupancy.get_location_state("kitchen")
-# {"occupied": True, "confidence": 0.8, "active_occupants": ["Mike"], ...}
+# {"occupied": True, "active_holds": ["presence_sensor"], "is_locked": False, ...}
 
 # Persist state
 state_dump = occupancy.dump_state()
@@ -262,7 +268,7 @@ class LocationTypeRegistry:
         return child_type in valid_children.get(parent_type, [])
 ```
 
-**Option B: Store in modules dict**
+**Option B: Store in modules dict** (recommended for simpler integrations)
 
 ```python
 # Use reserved "_meta" module for integration metadata
@@ -271,15 +277,71 @@ loc_mgr.set_module_config(
     module_id="_meta",
     config={
         "type": "room",
-        "icon": "mdi:stove",
-        "color": "#FF5722"
+        "category": "kitchen",      # Room category for icon selection
+        "icon": "mdi:stove",         # Explicit override (optional)
     }
 )
 
 # Read back
 meta = loc_mgr.get_module_config("kitchen", "_meta")
 loc_type = meta.get("type", "room")  # Default to room
+category = meta.get("category")       # For icon inference
 ```
+
+### Icon Resolution Pattern
+
+The integration is responsible for mapping locations to icons. Recommended approach:
+
+```python
+# Constants for icon mapping
+TYPE_ICONS = {
+    "floor": "mdi:layers",
+    "room": "mdi:map-marker",
+    "zone": "mdi:vector-square",
+    "suite": "mdi:home-group",
+    "outdoor": "mdi:home-outline",
+    "building": "mdi:warehouse",
+}
+
+CATEGORY_ICONS = {
+    "kitchen": "mdi:silverware-fork-knife",
+    "bedroom": "mdi:bed",
+    "bathroom": "mdi:shower",
+    "living": "mdi:sofa",
+    "dining": "mdi:table-furniture",
+    "office": "mdi:desk",
+    "garage": "mdi:garage",
+    "patio": "mdi:flower",
+    "utility": "mdi:washing-machine",
+}
+
+def get_location_icon(loc_mgr, location_id: str) -> str:
+    """Resolve icon for a location (integration responsibility)."""
+    meta = loc_mgr.get_module_config(location_id, "_meta") or {}
+    
+    # Priority 1: Explicit icon override
+    if meta.get("icon"):
+        return meta["icon"]
+    
+    # Priority 2: Category-based icon
+    category = meta.get("category")
+    if category and category in CATEGORY_ICONS:
+        return CATEGORY_ICONS[category]
+    
+    # Priority 3: Infer category from name
+    location = loc_mgr.get_location(location_id)
+    if location:
+        name_lower = location.name.lower()
+        for cat, icon in CATEGORY_ICONS.items():
+            if cat in name_lower:
+                return icon
+    
+    # Priority 4: Type-based fallback
+    loc_type = meta.get("type", "room")
+    return TYPE_ICONS.get(loc_type, "mdi:map-marker")
+```
+
+> **See also**: [UI Design Spec](./ui/ui-design.md) section 3.1.3 for comprehensive icon tables.
 
 ### Why the Kernel Stays Agnostic
 
@@ -443,7 +505,7 @@ Keep payloads **platform-neutral**:
 payload = {
     "old_state": "off",
     "new_state": "on",
-    "occupant_id": "Mike",  # Extracted from attributes
+    "attributes": {"device_class": "motion"},  # Optional attributes
 }
 
 # ❌ Bad: Platform-specific
@@ -486,7 +548,7 @@ async def setup_state_exposure(hass, modules):
             "on" if payload["occupied"] else "off",
             attributes={
                 "confidence": payload["confidence"],
-                "active_occupants": payload.get("active_occupants", []),
+                "active_holds": payload.get("active_holds", []),
                 "expires_at": payload.get("expires_at"),
                 "friendly_name": f"{location_id} Occupancy",
             },
@@ -502,7 +564,7 @@ async def setup_state_exposure(hass, modules):
 
 | Module | Entity Pattern | Type | Attributes |
 |--------|---------------|------|------------|
-| Occupancy | `binary_sensor.occupancy_{location_id}` | `binary_sensor` | `confidence`, `active_occupants`, `expires_at` |
+| Occupancy | `binary_sensor.occupancy_{location_id}` | `binary_sensor` | `active_holds`, `is_locked`, `expires_at` |
 | Occupancy | `sensor.occupancy_confidence_{location_id}` | `sensor` | `unit_of_measurement: "%"` |
 | Actions | `sensor.actions_{location_id}` | `sensor` | `last_action`, `action_count` |
 
@@ -670,7 +732,7 @@ async def restore_module_states(modules, state_data):
       "is_occupied": true,
       "confidence": 0.85,
       "occupied_until": "2025-11-24T14:30:00Z",
-      "active_occupants": ["Mike"],
+      "active_holds": ["ble_mike"],
       "active_holds": ["ble_mike"],
       "last_updated": "2025-11-24T14:25:00Z"
     },
@@ -678,7 +740,7 @@ async def restore_module_states(modules, state_data):
       "is_occupied": false,
       "confidence": 0.0,
       "occupied_until": null,
-      "active_occupants": [],
+      "active_holds": [],
       "active_holds": [],
       "last_updated": "2025-11-24T14:00:00Z"
     }
@@ -1183,7 +1245,7 @@ def setup_state_exposure(
             "on" if payload["occupied"] else "off",
             attributes={
                 "confidence": payload["confidence"],
-                "active_occupants": payload.get("active_occupants", []),
+                "active_holds": payload.get("active_holds", []),
                 "expires_at": payload.get("expires_at"),
                 "device_class": "occupancy",
                 "friendly_name": f"{location_id} Occupancy",
@@ -1372,7 +1434,7 @@ class OccupancyBinarySensor(BinarySensorEntity):
                 self._attr_is_on = payload["occupied"]
                 self._attr_extra_state_attributes = {
                     "confidence": payload["confidence"],
-                    "active_occupants": payload.get("active_occupants", []),
+                    "active_holds": payload.get("active_holds", []),
                     "expires_at": payload.get("expires_at"),
                 }
                 self.async_write_ha_state()
