@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.2.0-alpha
 
 jobs:
   build-and-publish:
