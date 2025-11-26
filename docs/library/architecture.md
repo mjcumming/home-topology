@@ -5,7 +5,7 @@
 **Status**: Active  
 **Last Updated**: 2025-11-25
 
-> **See also**: [Architecture Decisions](./decisions-pending.md) for high-level design rationale and decision log.
+> **See also**: [Architecture Decisions](../decisions-pending.md) for high-level design rationale and decision log.
 
 ---
 
@@ -173,7 +173,7 @@ loc_mgr.set_module_config(
 )
 ```
 
-> **See also**: [UI Design Spec](./ui/ui-design.md) section 5.3.1 for recommended type hierarchy and UI enforcement rules.
+> **See also**: [UI Design Spec](../integration/ui-design.md) section 5.3.1 for recommended type hierarchy and UI enforcement rules.
 
 ---
 
@@ -289,7 +289,7 @@ The integration layer (not the core library) decides which entities send occupan
 
 This is simpler than the original design and puts control where it belongs - in the integration layer that understands the platform.
 
-See [docs/modules/occupancy-design.md](./modules/occupancy-design.md) for event types (TRIGGER, CLEAR, VACATE, LOCK, UNLOCK, UNLOCK_ALL).
+See [Occupancy Module Design](./modules/occupancy/design.md) for the event/command model (events: TRIGGER, CLEAR; commands: vacate, lock, unlock).
 
 #### Layer 2: Module-Level Deduplication
 
@@ -461,10 +461,10 @@ def restore_state(self, state: Dict) -> None:
 The `home-topology` kernel ships with these modules:
 
 - **OccupancyModule** - Track occupancy state per location  
-  See [docs/modules/occupancy-design.md](./modules/occupancy-design.md)
+  See [Occupancy Module Design](./modules/occupancy/design.md)
 
 - **ActionsModule** - Execute automations based on semantic events  
-  See [docs/modules/actions-design.md](./modules/actions-design.md)
+  See [Actions Module Design](./modules/actions/design.md)
 
 Future modules:
 - **ComfortModule** - Temperature, humidity, air quality per location

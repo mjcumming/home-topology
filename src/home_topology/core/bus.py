@@ -5,7 +5,7 @@ The Event Bus is a simple, synchronous dispatcher for domain events.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Optional, Dict, Any, Callable, List
 
 from home_topology.core.manager import LocationManager
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def _utc_now() -> datetime:
     """Get current UTC time (for default factory)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @dataclass

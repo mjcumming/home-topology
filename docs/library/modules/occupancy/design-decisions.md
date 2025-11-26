@@ -2,13 +2,16 @@
 
 **Status**: Approved  
 **Date**: 2025-11-26  
-**Version**: 2.3
+**Version**: 3.0
 
 ---
 
 ## Overview
 
 This document captures the key design decisions for the Occupancy Module, which simplifies the architecture by moving signal classification to the integration layer and streamlining the event type system.
+
+**v3.0 Changes** (2025-11-26):
+- Decision 15: Simplified Event Model (TRIGGER + CLEAR replaces TRIGGER/HOLD/RELEASE)
 
 **v2.3 Changes** (2025-11-26):
 - Decision 11: Events vs Commands - Separate API surfaces
@@ -55,25 +58,24 @@ The core library receives events that already contain:
 
 ---
 
-## Decision 2: Seven Event Types
+## Decision 2: Six Event Types (Updated in v3.0)
 
 ### Context
 
-The original design had event types that were tied to sensor categories, with PROPAGATED as an internal event type exposed in the API.
+The original design had event types that were tied to sensor categories, with PROPAGATED as an internal event type exposed in the API. v2.x simplified to seven types (TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL). v3.0 further simplifies by merging HOLD/RELEASE into the TRIGGER/CLEAR model.
 
-### Decision
+### Decision (v3.0)
 
-**Seven clean event types**, with PROPAGATED handled as internal logic:
+**Six clean event types**, with two for device signals and four for commands:
 
 ```python
 class EventType(Enum):
-    # Occupancy signals (sent by integrations)
-    TRIGGER = "trigger"      # Activity detected → occupied + timer
-    HOLD = "hold"            # Presence started → occupied indefinitely
-    RELEASE = "release"      # Presence ended → trailing timer starts
-    VACATE = "vacate"        # Force vacant immediately
+    # Events (from entity state changes via integration)
+    TRIGGER = "trigger"      # Source contributing → with timeout or indefinite
+    CLEAR = "clear"          # Source stops contributing → with trailing timeout or immediate
     
-    # State control (sent by integrations)
+    # Commands (from automations/UI)
+    VACATE = "vacate"        # Force vacant immediately
     LOCK = "lock"            # Add source to locked_by set
     UNLOCK = "unlock"        # Remove source from locked_by set
     UNLOCK_ALL = "unlock_all"  # Clear all locks
@@ -83,13 +85,19 @@ class EventType(Enum):
 
 | Event | Purpose |
 |-------|---------|
-| **TRIGGER** | Activity detection (motion, door, light, any change). Sets occupied + starts/extends timer. |
-| **HOLD** | Presence detection (radar, BLE). Sets occupied indefinitely until released. |
-| **RELEASE** | Presence cleared. Releases hold, starts trailing timer. |
-| **VACATE** | Force vacant. Used when integration determines vacancy (e.g., light off = vacant). |
+| **TRIGGER** | Source is contributing to occupancy. Timeout = when it expires. `None` = indefinite. |
+| **CLEAR** | Source stops contributing. Optional trailing timeout before fully clearing. |
+| **VACATE** | Force vacant. Clears all contributions immediately. |
 | **LOCK** | Freezes state. Adds source to `locked_by` set. |
 | **UNLOCK** | Removes source from `locked_by`. Unfrozen when set empty. |
 | **UNLOCK_ALL** | Clears `locked_by` entirely. Force unlock. |
+
+### Why TRIGGER + CLEAR Instead of TRIGGER/HOLD/RELEASE?
+
+See Decision 15 for full rationale. Summary:
+- Simpler mental model: sources either ARE or AREN'T contributing
+- Unified timeout concept: all contributions have expiration (or None)
+- Per-source tracking enables proper sensor layering
 
 ### Why Not PROPAGATED?
 
@@ -283,18 +291,19 @@ UNLOCK_ALL(source_id="user_override")
 
 ---
 
-## Summary: Before vs After
+## Summary: Version Evolution
 
-| Aspect | Before (v1) | After (v2) |
-|--------|-------------|------------|
-| **Event Types** | MOMENTARY, HOLD_START, HOLD_END, MANUAL, LOCK_CHANGE, PROPAGATED | TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL |
-| **Signal Classification** | Core library (pattern matching) | Integration layer |
-| **Confidence** | Weighted 0.0-1.0 | None (binary) |
-| **Secondary Signals** | Lights, switches, power (boost confidence) | None (all signals equal) |
-| **Timeouts** | Per-category dictionary | Location default + event override |
-| **Propagation** | PROPAGATED event type | Internal logic |
-| **Configuration** | Complex (categories, weights, signals) | Minimal (two timeouts, strategy) |
-| **Lock State** | `lock_state: LockState` enum | `locked_by: set[str]` with source tracking |
+| Aspect | v1 | v2 | v3 (Current) |
+|--------|----|----|--------------|
+| **Event Types** | MOMENTARY, HOLD_START, HOLD_END, MANUAL, LOCK_CHANGE, PROPAGATED | TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL | TRIGGER, CLEAR, VACATE, LOCK, UNLOCK, UNLOCK_ALL |
+| **Signal Classification** | Core library (pattern matching) | Integration layer | Integration layer |
+| **State Tracking** | Single timer + holds | Single timer + holds set | Per-source contributions |
+| **Confidence** | Weighted 0.0-1.0 | None (binary) | None (binary) |
+| **Secondary Signals** | Lights, switches, power (boost confidence) | None (all signals equal) | None (all signals equal) |
+| **Timeouts** | Per-category dictionary | Location default + event override | Location default + event override |
+| **Propagation** | PROPAGATED event type | Internal logic | Internal logic |
+| **Configuration** | Complex (categories, weights, signals) | Minimal (two timeouts, strategy) | Minimal (two timeouts, strategy) |
+| **Lock State** | `lock_state: LockState` enum | `locked_by: set[str]` with source tracking | `locked_by: set[str]` with source tracking |
 
 ---
 
@@ -319,9 +328,9 @@ UNLOCK_ALL(source_id="user_override")
 
 ## References
 
-- **Implementation Status**: `occupancy-implementation-status.md`
-- **Integration Guide**: `occupancy-integration.md`
-- **Original Design**: `occupancy-design.md` (historical reference)
+- **Implementation Status**: `implementation-status.md`
+- **API Reference**: `api.md`
+- **Design Document**: `design.md`
 
 ---
 
@@ -467,11 +476,11 @@ Default `False` is safer - if someone locked a room, they probably had a reason.
 
 ---
 
-## Decision 11: Events vs Commands - Separate API Surfaces
+## Decision 11: Events vs Commands - Separate API Surfaces (Updated in v3.0)
 
 ### Context
 
-The original design treated all 7 signal types uniformly as "events" processed through the same code path. However, there's a conceptual distinction between device-originated signals and imperative commands.
+The original design treated all signal types uniformly as "events" processed through the same code path. However, there's a conceptual distinction between device-originated signals and imperative commands.
 
 ### Decision
 
@@ -479,25 +488,24 @@ The original design treated all 7 signal types uniformly as "events" processed t
 
 | Category | Signal Types | Origin | API |
 |----------|-------------|--------|-----|
-| **Events** | TRIGGER, HOLD, RELEASE | Device state changes via integration | `trigger()`, `hold()`, `release()` methods |
+| **Events** | TRIGGER, CLEAR | Entity state changes via integration | `trigger()`, `clear()` methods |
 | **Commands** | VACATE, LOCK, UNLOCK, UNLOCK_ALL | Automations, UI, direct calls | `vacate()`, `lock()`, `unlock()`, `unlock_all()` methods |
 
 ### Rationale
 
 1. **Conceptual clarity**: Events are "things that happened", commands are "do this now"
-2. **Different origins**: Events come from device mappings, commands from automations/UI
+2. **Different origins**: Events come from entity state changes, commands from automations/UI
 3. **Simpler signatures**: Commands don't need `timeout` or device-related fields
 4. **Testing**: Commands can be tested independently from event processing
-5. **Integration design**: Natural separation - device mappings produce events, services expose commands
+5. **Integration design**: Natural separation - Occupancy Sources produce events, services expose commands
 
-### API
+### API (v3.0)
 
 ```python
 class OccupancyModule:
-    # EVENTS (from device mappings)
+    # EVENTS (from entity state changes)
     def trigger(self, location_id, source_id, timeout=None): ...
-    def hold(self, location_id, source_id): ...
-    def release(self, location_id, source_id, trailing_timeout=None): ...
+    def clear(self, location_id, source_id, trailing_timeout=0): ...
     
     # COMMANDS (from automations/UI)
     def vacate(self, location_id): ...
@@ -509,7 +517,7 @@ class OccupancyModule:
 ### Impact
 
 - Core library API changes (method signatures)
-- Integration layer uses events for device mappings, commands for services
+- Integration layer uses events for Occupancy Sources, commands for services
 - Documentation updated to reflect distinction
 
 ---
@@ -563,61 +571,35 @@ T+15:00 Timer expires       → vacant
 
 ---
 
-## Decision 13: Holds and Timers Coexist
+## Decision 13: Holds and Timers Coexist (Superseded by Decision 15)
 
-### Context
+> **Note**: This decision described the v2.x behavior. In v3.0, this is superseded by per-source contribution tracking (Decision 15), which achieves the same goal more elegantly.
+
+### Original Context (v2.x)
 
 What happens when TRIGGER and HOLD events interact? Originally proposed that holds would "supersede" (clear) timers, but this loses contributions from motion sensors during presence holds.
 
-### Decision
+### Original Decision (v2.x)
 
 **Timers continue to be tracked during holds. When all holds release, the existing timer (if still valid) is used; otherwise trailing timer starts.**
 
-### Behavior
+### How v3.0 Handles This
+
+With per-source contribution tracking, each source has its own expiration:
 
 ```
-TRIGGER received:
-  occupied_until = max(occupied_until, now + timeout)  # Always extend
-  is_occupied = True
-
-HOLD received:
-  active_holds.add(source_id)
-  is_occupied = True
-  # occupied_until unchanged - timers keep running
-
-RELEASE received (last hold):
-  active_holds.remove(source_id)
-  if active_holds is empty:
-    if occupied_until is None or occupied_until <= now:
-      # No valid timer - start trailing timer
-      occupied_until = now + trailing_timeout
-    # else: keep existing timer from TRIGGERs
+T+0:00  TRIGGER(motion, 10min)   → motion contributes until T+10:00
+T+1:00  TRIGGER(presence, None)  → presence contributes indefinitely
+T+2:00  TRIGGER(motion, 10min)   → motion extended to T+12:00
+T+3:00  CLEAR(presence, 2min)    → presence contributes until T+5:00
+T+5:00  presence expires         → motion still contributes until T+12:00
+T+12:00 motion expires           → no contributions, vacant
 ```
 
-### Rationale
-
-1. **Real-world scenario**: Presence sensors have coverage gaps, motion sensors fill them
-2. **User expectation**: All sensors should contribute to occupancy
-3. **Simple implementation**: Just don't clear the timer on HOLD
-4. **Intuitive**: TRIGGER always extends, RELEASE checks what's left
-
-### Example
-
-```
-T+0:00  TRIGGER(10min)   → occupied until T+10:00
-T+1:00  HOLD             → occupied indefinitely, timer preserved at T+10:00
-T+2:00  TRIGGER(10min)   → occupied until T+12:00 (extended!)
-T+3:00  RELEASE          → occupied until T+12:00 (motion's timer kicks in)
-T+12:00 Expires          → vacant
-```
-
-If no TRIGGERs during hold:
-
-```
-T+0:00  HOLD             → occupied indefinitely
-T+5:00  RELEASE(2min)    → occupied until T+7:00 (trailing timer)
-T+7:00  Expires          → vacant
-```
+The per-source model achieves the same layering goal more cleanly:
+- Each source tracks its own contribution independently
+- No complex interaction logic between "timer" and "holds"
+- Clear visibility into which sources are keeping the location occupied
 
 ---
 
@@ -660,6 +642,114 @@ A separate module for identity/person tracking:
 - Remove `active_occupants` from state model
 - Update tests that reference these fields
 - Document PresenceModule as future work
+
+---
+
+---
+
+## Decision 15: Simplified Event Model - TRIGGER + CLEAR with Per-Source Tracking
+
+### Context
+
+The v2.x model had three event types for device signals:
+- **TRIGGER**: Activity with timeout (motion sensors)
+- **HOLD**: Indefinite presence (presence sensors ON)
+- **RELEASE**: End of hold with trailing timeout (presence sensors OFF)
+
+This created complexity:
+1. Two concepts (timers vs holds) with interaction rules
+2. Complex state: `occupied_until` timer + `active_holds` set
+3. Decision 13 was needed to explain how they coexist
+4. Integration needed to understand when to use which event
+
+### Decision
+
+**Simplify to two events with per-source contribution tracking:**
+
+```python
+class EventType(Enum):
+    TRIGGER = "trigger"  # Source is contributing (timeout or indefinite)
+    CLEAR = "clear"      # Source stops contributing (trailing timeout or immediate)
+```
+
+**State model changes:**
+
+```python
+# Before (v2.x)
+occupied_until: datetime | None      # Single shared timer
+active_holds: FrozenSet[str]         # Sources with indefinite holds
+
+# After (v3.0)
+contributions: FrozenSet[SourceContribution]  # Each source tracked independently
+
+@dataclass
+class SourceContribution:
+    source_id: str
+    expires_at: datetime | None  # None = indefinite
+```
+
+### Rationale
+
+1. **Simpler mental model**: A source either IS or ISN'T contributing
+2. **Unified timeout concept**: All contributions have expiration (or None for indefinite)
+3. **Per-source tracking**: Natural solution to sensor layering (Decision 13's problem)
+4. **Cleaner API**: Two methods instead of three
+5. **Better visibility**: Can ask "which sources are keeping this occupied?"
+
+### Mapping from v2.x
+
+| v2.x | v3.0 |
+|------|------|
+| `trigger(timeout=300)` | `trigger(timeout=300)` |
+| `hold()` | `trigger(timeout=None)` |
+| `release(trailing=120)` | `clear(trailing_timeout=120)` |
+| `active_holds` | Contributions with `expires_at=None` |
+| `occupied_until` | Earliest `expires_at` across all contributions |
+
+### Example: Coverage Gap Scenario
+
+The motivating scenario: presence sensor + motion sensor in same room, motion covers area presence doesn't.
+
+```
+# User at desk (presence sees them)
+trigger("presence", timeout=None)     # presence contributes indefinitely
+
+# User walks to corner (motion sees, presence loses them)  
+trigger("motion", timeout=600)        # motion contributes for 10 min
+
+# Presence clears (but motion just saw them!)
+clear("presence", trailing_timeout=120)  # presence: 2 min trailing
+
+# contributions = {presence: T+2min, motion: T+10min}
+# Location stays occupied because motion is still contributing
+
+# Presence expires at T+2min
+# contributions = {motion: T+8min remaining}
+# Still occupied!
+
+# Motion expires at T+10min
+# contributions = {}
+# Now vacant
+```
+
+This "just works" with per-source tracking - no special interaction logic needed.
+
+### Impact
+
+- Core library: Significant refactor of state model and engine
+- Integration layer: Simpler event classification logic
+- UI: "Occupancy Sources" section shows contributions
+- Tests: All tests need updating for new model
+- Docs: Design docs updated (this decision)
+
+### Migration
+
+1. Update `EventType` enum (remove HOLD, RELEASE; add CLEAR)
+2. Replace `LocationRuntimeState` with contribution-based model
+3. Update engine to track per-source contributions
+4. Update API methods (remove `hold()`, `release()`; add `clear()`)
+5. Update all tests
+6. Update integration guide
 
 ---
 

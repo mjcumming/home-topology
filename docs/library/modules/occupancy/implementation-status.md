@@ -20,7 +20,7 @@ This document tracks the implementation status of the Occupancy Module. The modu
 - Holds and timers coexist (timers preserved during holds)
 - Removed identity tracking (deferred to PresenceModule)
 
-See `occupancy-design-decisions.md` for full rationale (Decisions 11-14).
+See `design-decisions.md` for full rationale (Decisions 11-14).
 
 ---
 
@@ -75,9 +75,9 @@ class LocationRuntimeState:
 
 **Documentation** ✅
 - [x] Update design decisions (Decisions 11-14)
-- [x] Update design document (occupancy-design.md)
+- [x] Update design document (design.md)
 - [x] Update implementation status (this document)
-- [ ] Update integration guide (occupancy-integration.md)
+- [ ] Update API reference (api.md)
 
 **Code Changes** (Pending)
 - [ ] `models.py` - Remove `active_occupants` field
@@ -204,12 +204,13 @@ def unlock_all(self, location_id): ...
 
 ## References
 
-- **Design Decisions**: `occupancy-design-decisions.md` (Decisions 1-14)
-- **Design Document**: `occupancy-design.md` (v2.3)
-- **Integration Guide**: `occupancy-integration.md` (needs update)
+- **Design Decisions**: `design-decisions.md` (Decisions 1-14)
+- **Design Document**: `design.md` (v2.3)
+- **API Reference**: `api.md` (needs update)
 - **Future**: PresenceModule for identity tracking
 
 ---
 
 **Current Status**: v2.3 Design Approved ✅  
 **Next Step**: Implement code changes (models.py, module.py, engine.py)
+

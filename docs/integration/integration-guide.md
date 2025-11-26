@@ -341,7 +341,7 @@ def get_location_icon(loc_mgr, location_id: str) -> str:
     return TYPE_ICONS.get(loc_type, "mdi:map-marker")
 ```
 
-> **See also**: [UI Design Spec](./ui/ui-design.md) section 3.1.3 for comprehensive icon tables.
+> **See also**: [UI Design Spec](./ui-design.md) section 3.1.3 for comprehensive icon tables.
 
 ### Why the Kernel Stays Agnostic
 
@@ -350,7 +350,7 @@ def get_location_icon(loc_mgr, location_id: str) -> str:
 3. **Power users**: API can bypass UI constraints if needed
 4. **Future-proof**: Add new types without kernel changes
 
-> **See also**: [UI Design Spec](./ui/ui-design.md) section 5.3.1 for detailed UI enforcement rules.
+> **See also**: [UI Design Spec](./ui-design.md) section 5.3.1 for detailed UI enforcement rules.
 
 ---
 
@@ -733,14 +733,12 @@ async def restore_module_states(modules, state_data):
       "confidence": 0.85,
       "occupied_until": "2025-11-24T14:30:00Z",
       "active_holds": ["ble_mike"],
-      "active_holds": ["ble_mike"],
       "last_updated": "2025-11-24T14:25:00Z"
     },
     "living_room": {
       "is_occupied": false,
       "confidence": 0.0,
       "occupied_until": null,
-      "active_holds": [],
       "active_holds": [],
       "last_updated": "2025-11-24T14:00:00Z"
     }
@@ -1502,15 +1500,14 @@ This guide covered:
 
 ### Next Steps
 
-- Read the [module specifications](./modules/)
-- Review the [complete example code](../examples/)
+- Read the [module specifications](../library/modules/)
 - Join the [discussions](https://github.com/mjcumming/home-topology/discussions)
 - Build your integration!
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025.11.24  
+**Document Version**: 2.3  
+**Last Updated**: 2025.11.26  
 **Status**: Living Document
 
 

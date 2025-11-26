@@ -9,11 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- N/A
-
 ### Changed
-- N/A
+- **Python 3.12+ required**: Bumped minimum Python version to 3.12 to align with Home Assistant requirements
+- Use `datetime.UTC` instead of `datetime.timezone.utc` throughout codebase
 
 ---
 

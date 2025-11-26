@@ -83,17 +83,36 @@ Consider all-contributors bot later if community grows.
 - Design for ~100 locations, ~1000 entities
 - Add benchmarks later if performance issues arise
 
+### 15. Occupancy Event Model (v3.0) 🎯
+**Decision**: TRIGGER + CLEAR with per-source tracking  
+**Date**: 2025-11-26  
+- Replaces TRIGGER/HOLD/RELEASE with simpler TRIGGER/CLEAR
+- Per-source contribution tracking (each entity tracked independently)
+- `timeout=None` for indefinite contributions
+- **Status**: Design docs updated, implementation pending
+
+### 16. UI Terminology: "Occupancy Sources" 📝
+**Decision**: Use "Occupancy Sources" instead of "Device Mappings"  
+**Date**: 2025-11-26  
+- More descriptive of what the section does
+- "Presence Inputs" reserved for future Presence module
+- Use "entity" not "device" (follows HA paradigm)
+
+### 17. Timeout Model 🕐
+**Decision**: Location default + per-entity override  
+**Date**: 2025-11-26  
+- Location has `default_timeout` and `default_trailing_timeout`
+- Each entity can override with specific timeout
+- If entity doesn't specify, inherits from location
+
 ---
 
 ## 🔮 Deferred (Design Later)
 
 These will be addressed when we reach that phase of development:
 
-### Wasp-in-a-Box Implementation 🚪
-- Options: Auto-generate rules vs guided wizard vs engine flag
-- Design when occupancy rule engine is more mature
-
 ### Actions Module Design 🎬
+- Distant future add-on
 - Design when we start Actions module work
 
 ### Sync Conflict Resolution 🔄
@@ -102,7 +121,12 @@ These will be addressed when we reach that phase of development:
 
 ### UI Strategy 🖥️
 - Tree View + Inspector pattern confirmed conceptually
-- Detail when building frontend
+- Prototyping in Gemini Canvas
+- **Remaining mockups needed**:
+  - New Location Dialog
+  - Entity Configuration Dialog
+  - Hover states (drag handle, delete button)
+  - State indicators (pending changes, occupancy status)
 
 ---
 
@@ -114,5 +138,5 @@ These will be addressed when we reach that phase of development:
 
 ---
 
-**Status**: Core decisions complete  
-**Last Updated**: 2025-11-25
+**Status**: Core decisions complete, UI mockup phase  
+**Last Updated**: 2025-11-26

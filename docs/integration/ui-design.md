@@ -3,7 +3,7 @@
 > This document defines the UI design for the Home Topology Location Manager. It will be used to drive UI implementation in the Home Assistant integration.
 
 **Status**: Draft (Prototyping in Gemini Canvas)  
-**Last Updated**: 2025-11-25  
+**Last Updated**: 2025-11-26  
 **Target Platform**: Home Assistant Panel (standalone view)
 
 ---
@@ -477,7 +477,7 @@ location_type = meta.get("type", "room")
 
 > **See also**: 
 > - Section 3.1.3 above for icon resolution strategy
-> - [Integration Guide](../integration-guide.md#location-types-your-responsibility) for complete implementation patterns
+> - [Integration Guide](./integration-guide.md#location-types-your-responsibility) for complete implementation patterns
 
 ---
 

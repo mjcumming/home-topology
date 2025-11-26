@@ -1,4 +1,4 @@
-# Occupancy Module - Integration Guide
+# Occupancy Module - API Reference
 
 **Status**: v3.0  
 **Date**: 2025-11-26  
@@ -546,13 +546,14 @@ def test_presence_with_motion_coverage_gap():
 
 ## References
 
-- **Architecture**: `../architecture.md`
-- **Design Document**: `occupancy-design.md`
-- **Design Decisions**: `occupancy-design-decisions.md`
-- **Implementation Status**: `occupancy-implementation-status.md`
-- **UI Design**: `../ui/ui-design.md`
+- **Architecture**: `../../architecture.md`
+- **Design Document**: `design.md`
+- **Design Decisions**: `design-decisions.md`
+- **Implementation Status**: `implementation-status.md`
+- **UI Design**: `../../../integration/ui-design.md`
 
 ---
 
 **Status**: v3.0 ✅  
 **Last Updated**: 2025-11-26
+

@@ -5,7 +5,7 @@ home-topology kernel (EventBus, LocationManager).
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from typing import Any, Dict, Optional, List
 
 from home_topology.modules.base import LocationModule
@@ -146,7 +146,7 @@ class OccupancyModule(LocationModule):
 
         # Process with engine
         assert self._engine is not None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = self._engine.handle_event(occ_event, now)
 
         # Emit transitions as occupancy.changed events
@@ -249,7 +249,7 @@ class OccupancyModule(LocationModule):
                     "previous_occupied": prev_state.is_occupied if prev_state else False,
                     "reason": transition.reason,
                 },
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
         )
 
@@ -281,7 +281,7 @@ class OccupancyModule(LocationModule):
             return None
 
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         return self._engine._calculate_next_expiration(now)
 
@@ -306,7 +306,7 @@ class OccupancyModule(LocationModule):
             return
 
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         logger.debug(f"Checking timeouts at {now}")
         result = self._engine.check_timeouts(now)
@@ -346,7 +346,7 @@ class OccupancyModule(LocationModule):
             logger.warning("Cannot restore state: engine not initialized")
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._engine.restore_state(state, now)
         logger.info(f"Restored occupancy state for {len(state)} locations")
 
@@ -419,7 +419,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.TRIGGER,
@@ -444,7 +444,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.HOLD,
@@ -470,7 +470,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.RELEASE,
@@ -496,7 +496,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.VACATE,
@@ -524,7 +524,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.LOCK,
@@ -548,7 +548,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.UNLOCK,
@@ -571,7 +571,7 @@ class OccupancyModule(LocationModule):
         """
         assert self._engine is not None
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.UNLOCK_ALL,
@@ -613,7 +613,7 @@ class OccupancyModule(LocationModule):
             return None
 
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         return self._engine.get_effective_timeout(location_id, now)
 
@@ -655,7 +655,7 @@ class OccupancyModule(LocationModule):
             return []
 
         if now is None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
         result = self._engine.vacate_area(location_id, source_id, now, include_locked)
 
