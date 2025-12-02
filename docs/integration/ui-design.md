@@ -1,10 +1,11 @@
-# Home Topology UI Design Specification v0.1
+# Home Topology UI Design Specification v0.2
 
-> This document defines the UI design for the Home Topology Location Manager. It will be used to drive UI implementation in the Home Assistant integration.
+> This document defines the UI design for the Home Topology Location Manager. It drives UI implementation in the Home Assistant integration.
 
-**Status**: Draft (Prototyping in Gemini Canvas)  
-**Last Updated**: 2025-11-26  
-**Target Platform**: Home Assistant Panel (standalone view)
+**Status**: Design Complete (Implementation Ready)  
+**Last Updated**: 2025-12-02  
+**Target Platform**: Home Assistant Panel (standalone view)  
+**Technology**: Lit (LitElement) - See [Section 10](#10-implementation-notes) for rationale
 
 ---
 
@@ -252,37 +253,116 @@ DEVICE MAPPINGS
 | Default Timeout | Number input | `modules.occupancy.default_timeout` | Minutes until vacant after TRIGGER event |
 | Hold Release Timeout | Number input | `modules.occupancy.hold_release_timeout` | Trailing minutes after RELEASE event |
 
-##### Device Mappings Section
+##### Occupancy Sources Section
 
-Lists devices mapped to this location with their device type presets.
+Lists entities from this HA area that generate occupancy events.
 
 | Element | Description |
 |---------|-------------|
 | Entity Icon | Entity domain icon (motion, presence, door, etc.) |
-| Entity Name | Friendly name |
-| Device Type | Preset behavior (see Device Type Presets below) |
-| Configure Button | Opens device mapping configuration |
-| Add Device Button | Opens entity picker to add new device |
+| Entity Name | Friendly name from Home Assistant |
+| Mode Badge | "Any Change" or "Specific States" |
+| Timeout Display | e.g., "5 min" or "∞ → 2m" |
+| Configure Button | Opens entity configuration dialog |
+| Add Entity Button | Opens entity picker (only shows entities from this HA area) |
 
-##### Device Type Presets
+##### Entity Configuration Dialog
 
-The integration provides preset behaviors for common device types:
+Two trigger modes are available:
 
-| Device Type | ON Event | OFF Event | Use Case |
-|-------------|----------|-----------|----------|
-| **Motion Sensor** | TRIGGER + default timeout | (ignored) | PIR, mmWave detecting movement |
-| **Presence Sensor** | HOLD (indefinite) | RELEASE + trailing timeout | Radar, BLE, occupancy sensors |
-| **Door Sensor** | TRIGGER + 2 min timeout | (ignored) | Entry doors, cabinet doors |
-| **Light Switch** | TRIGGER + timeout | (ignored) | Manual light activation |
-| **Media Player** | HOLD (indefinite) | RELEASE + 5 min timeout | TV, speakers in use |
-| **Power Sensor** | HOLD (indefinite) | RELEASE + timeout | Appliance usage detection |
-| **Any Change** | Custom | Custom | Flexible for unusual sensors |
+**Mode 1: Any Change (Activity Detection)**
+```
+TRIGGER MODE
+─────────────────────────────────────────────────────────
+● Any change (triggers on any state change)
+○ Specific states (configure ON/OFF below)
 
-**Configure dialog** allows:
-- Override timeout values
-- Change ON/OFF event behavior
-- Set custom trailing timeout
-- Enable/disable device contribution
+Timeout: [5] min    ☐ Use location default
+```
+
+Best for: dimmers, volume controls, thermostats, unusual sensors.
+
+**Mode 2: Specific States (Binary Mapping)**
+```
+TRIGGER MODE
+─────────────────────────────────────────────────────────
+○ Any change (triggers on any state change)
+● Specific states (configure ON/OFF below)
+
+ON STATE (off → on)
+  Event: ● TRIGGER  ○ None
+  Timeout: [5] min    ☐ Indefinite (until OFF state)
+                      ☐ Use location default
+
+OFF STATE (on → off)
+  Event: ● None  ○ CLEAR
+  Trailing: [2] min    ☐ Use location default
+```
+
+Best for: motion sensors, presence sensors, door sensors, media players.
+
+**Timeout Options** (available for any sensor):
+- **Number input**: Timeout in minutes (e.g., 5 min)
+- **"Indefinite (until OFF state)" checkbox**: Source contributes indefinitely until OFF state triggers CLEAR
+- **"Use location default" checkbox**: Uses location's `default_timeout` setting
+
+**Examples of when "Indefinite" is useful**:
+- **Presence sensors**: Sensor ON = occupied, sensor OFF = CLEAR with trailing
+- **State-based door sensors**: Door open = occupied, door closed = CLEAR immediately
+- **Media players**: Playing = occupied, idle = CLEAR with trailing
+- **Any sensor**: When the sensor state itself indicates occupancy (not just activity)
+
+**Note**: These options are available for all sensors. Choose the timeout behavior that matches your use case.
+
+##### Default Mode by Entity Type
+
+| Entity Type | Default Mode | Default Config | Notes |
+|-------------|--------------|----------------|-------|
+| Motion sensor | Specific states | ON→TRIGGER(5m), OFF→ignore | Re-trigger extends timer |
+| Presence sensor | Specific states | ON→TRIGGER(∞), OFF→CLEAR(2m) | Indefinite until cleared |
+| Door sensor | Specific states | ON→TRIGGER(2m), OFF→ignore | **See door sensor patterns below** |
+| Media player | Specific states | playing→TRIGGER(∞), idle→CLEAR(5m) | Indefinite while playing |
+| Dimmer/Light | Any change | TRIGGER(5m) on any change | Activity detection |
+| Unknown | Any change | TRIGGER(5m) on any change | Conservative default |
+
+**Door Sensor Configuration Options**:
+
+The UI should allow users to choose between two door sensor patterns:
+
+1. **Entry Door** (default): `ON→TRIGGER(2m), OFF→ignore`
+   - Use for: Front door, entryway, room doors
+   - Behavior: Opening indicates entry, person may still be present after door closes
+   - UI: Default configuration when adding door sensor
+
+2. **State Door** (option): `ON→TRIGGER(∞), OFF→CLEAR(0)`
+   - Use for: Garage door, storage room, closet
+   - Behavior: Door state directly indicates occupancy
+   - UI: Checkbox "Door state indicates occupancy" → switches to this pattern
+   - Alternative: Explicit configuration in entity dialog:
+     ```
+     ON STATE: TRIGGER with ☑ Indefinite (until OFF state)
+     OFF STATE: CLEAR with Trailing: [0] min
+     ```
+
+**UI Implementation Suggestion**:
+
+For door sensors specifically, show a pattern selector:
+
+```
+DOOR SENSOR PATTERN
+─────────────────────────────────────────────────────────
+○ Entry door (opening indicates entry)
+  ON→TRIGGER(2m), OFF→ignore
+  
+● State door (door state = occupancy state)
+  ON→TRIGGER(∞), OFF→CLEAR(0)
+  
+  ☐ Show advanced configuration
+```
+
+This makes it clear and user-friendly without exposing the underlying timeout/indefinite concepts.
+
+> **Note**: For edge cases not covered by the UI, users can call `home_topology.trigger` directly from their own automations.
 
 #### 3.2.3 Actions Tab
 
@@ -328,10 +408,19 @@ class Location:
 ```python
 # modules.occupancy blob
 {
-    "enabled": True,              # → Presence Logic toggle
-    "timeout": 600,               # → Default Timeout (seconds, display as minutes)
-    "wasp_mode": False,           # → Wasp-in-a-Box checkbox
-    "strategy": "inherit",        # → (future) strategy selector
+    "enabled": True,                     # → Occupancy Settings toggle
+    "default_timeout": 600,              # → Location Timeout (seconds)
+    "default_trailing_timeout": 120,     # → Trailing Timeout (seconds)
+    "occupancy_sources": [               # → Occupancy Sources list
+        {
+            "entity_id": "binary_sensor.kitchen_motion",
+            "mode": "specific_states",   # or "any_change"
+            "on_event": "trigger",       # trigger, none
+            "on_timeout": 300,           # seconds, or null for indefinite
+            "off_event": "none",         # clear, none
+            "off_trailing": null,        # seconds if off_event is clear
+        },
+    ],
 }
 ```
 
@@ -604,29 +693,262 @@ INBOX (3 entities)
 
 ## 10. Implementation Notes
 
-### 10.1 Technology Stack (TBD)
+### 10.1 Technology Stack: Lit (Decided)
 
-Options for HA panel implementation:
-- **Lit Element**: HA native, consistent with core UI
-- **React**: Easier development, requires bundling
-- **Preact**: React-compatible, smaller bundle
+**Decision**: Use **Lit** (LitElement) for all frontend components.
 
-### 10.2 HA Integration Points
+| Criterion | Lit | React | Why Lit Wins |
+|-----------|-----|-------|--------------|
+| HA Native | ✅ Yes | ❌ No | Entire HA frontend is Lit |
+| Component Reuse | ✅ Use `ha-*` directly | ❌ Wrap or rewrite | Leverage existing HA components |
+| Bundling | ✅ Native ES modules | ❌ Complex bundling | Simpler build, faster loads |
+| Theme Integration | ✅ CSS variables work | ⚠️ Requires adaptation | Automatic dark/light mode |
+| WebSocket API | ✅ `hass` object available | ⚠️ Manual wiring | Standard HA patterns |
+| Developer Experience | ⚠️ Less familiar | ✅ More popular | Worth learning for HA |
 
-| Integration | Method |
-|-------------|--------|
-| Panel registration | `async_register_panel()` |
-| State updates | WebSocket API |
-| Configuration | Config flow + options flow |
-| Services | `home_topology.create_location`, etc. |
+**Rationale**: React prototyping (Gemini Canvas) revealed significant friction with state management, focus handling, and drag-and-drop. These are solved problems in HA's Lit ecosystem. Building natively avoids translation overhead and leverages battle-tested HA components.
 
-### 10.3 Development Workflow
+### 10.2 HA Component Mapping
 
-1. Prototype in Gemini Canvas (current phase)
-2. Document design in this spec (current phase)
-3. Create HA integration repository
-4. Implement panel using Lit Element
-5. Iterate based on user testing
+Map design elements to existing HA components where possible:
+
+| Design Element | HA Component | Notes |
+|----------------|--------------|-------|
+| **Tree Panel** | Custom `ht-location-tree` | Build with `ha-list-item` + `ha-expansion-panel` |
+| **Details Panel** | Custom `ht-location-inspector` | Use `ha-card` for sections |
+| **Location Dialog** | `ha-dialog` + `ha-form` | Schema-driven form |
+| **Entity Picker** | `ha-entity-picker` | Filter by area with `include-areas` |
+| **Timeout Input** | `ha-selector` (number) | `{ number: { min: 1, max: 1440, unit_of_measurement: "min" } }` |
+| **Toggle Switch** | `ha-switch` | Standard HA toggle |
+| **Module Tabs** | `ha-tab-bar` + `ha-tab` | Or `mwc-tab-bar` |
+| **Icon Display** | `ha-icon` | MDI icons via `icon` attribute |
+| **Confirmation** | `ha-dialog` | Use `destructive` button style |
+| **Save Button** | `ha-button` | `unelevated` variant for primary |
+
+### 10.3 Custom Components to Build
+
+These components don't exist in HA and must be created:
+
+#### `ht-location-tree` (Tree Panel)
+
+```typescript
+@customElement('ht-location-tree')
+export class HtLocationTree extends LitElement {
+  @property({ attribute: false }) hass!: HomeAssistant;
+  @property({ attribute: false }) locations!: Location[];
+  @property() selectedId?: string;
+  @property({ attribute: false }) expandedIds: Set<string> = new Set();
+  
+  // Events
+  // - location-selected: { locationId: string }
+  // - location-moved: { locationId: string, newParentId: string | null, newIndex: number }
+  // - location-renamed: { locationId: string, newName: string }
+  // - location-deleted: { locationId: string }
+}
+```
+
+**Implementation approach**:
+1. Render flat list with visual indentation (not nested DOM)
+2. Use CSS `padding-left` for depth (simpler than nested components)
+3. Drag-and-drop via SortableJS library (proven, accessible)
+4. Inline rename with `contenteditable` span + blur/enter handlers
+
+#### `ht-location-inspector` (Details Panel)
+
+```typescript
+@customElement('ht-location-inspector')
+export class HtLocationInspector extends LitElement {
+  @property({ attribute: false }) hass!: HomeAssistant;
+  @property({ attribute: false }) location?: Location;
+  @property() activeTab: 'occupancy' | 'actions' = 'occupancy';
+  
+  // Events
+  // - config-changed: { locationId: string, module: string, config: object }
+}
+```
+
+**Implementation approach**:
+1. Header section with icon + name + ID
+2. Tab bar for modules (Occupancy, Actions)
+3. Each tab renders module-specific form
+4. Use `ha-form` with JSON schema where possible
+
+#### `ht-entity-config-dialog` (Entity Configuration)
+
+```typescript
+@customElement('ht-entity-config-dialog')
+export class HtEntityConfigDialog extends LitElement {
+  @property({ attribute: false }) hass!: HomeAssistant;
+  @property({ attribute: false }) entity?: EntityConfig;
+  @property({ type: Boolean }) open = false;
+  
+  // Events
+  // - config-saved: { entityId: string, config: OccupancySourceConfig }
+  // - dialog-closed
+}
+```
+
+**Implementation approach**:
+1. Wrap in `ha-dialog` for consistent modal behavior
+2. Two-column layout for ON/OFF state (desktop), stack on mobile
+3. Radio buttons for event type selection
+4. Conditional timeout inputs based on selection
+
+### 10.4 File Structure
+
+```
+home-topology-ha/
+├── custom_components/
+│   └── home_topology/
+│       ├── __init__.py              # Integration setup
+│       ├── config_flow.py           # Setup wizard
+│       ├── const.py                 # Constants
+│       ├── panel.py                 # Panel registration
+│       ├── websocket_api.py         # WS commands
+│       └── frontend/
+│           ├── home-topology-panel.ts       # Main panel entry
+│           ├── ht-location-tree.ts          # Tree component
+│           ├── ht-location-inspector.ts     # Inspector component
+│           ├── ht-entity-config-dialog.ts   # Config modal
+│           ├── ht-location-dialog.ts        # Create/edit location modal
+│           ├── types.ts                     # TypeScript interfaces
+│           ├── styles.ts                    # Shared styles
+│           └── localize.ts                  # Translations
+├── hacs.json                        # HACS metadata
+└── README.md
+```
+
+### 10.5 HA Integration Points
+
+| Integration | Method | Details |
+|-------------|--------|---------|
+| Panel registration | `async_register_panel()` | Register as sidebar panel |
+| State subscription | `hass.connection.subscribeEvents()` | Real-time occupancy updates |
+| API calls | `hass.callWS()` | CRUD operations on locations |
+| Entity data | `hass.states` | Entity states and attributes |
+| Area data | `hass.areas` | HA areas for entity filtering |
+| Themes | CSS variables | Automatic via `ha-style` |
+
+#### WebSocket API Commands
+
+```typescript
+// Get all locations
+hass.callWS({ type: 'home_topology/locations/list' })
+  → { locations: Location[] }
+
+// Create location
+hass.callWS({ 
+  type: 'home_topology/locations/create',
+  name: 'Kitchen',
+  parent_id: 'floor-1',
+  meta: { type: 'room', category: 'kitchen' }
+})
+  → { location: Location }
+
+// Update location
+hass.callWS({
+  type: 'home_topology/locations/update',
+  location_id: 'kitchen',
+  changes: { name: 'New Kitchen', parent_id: 'floor-2' }
+})
+  → { location: Location }
+
+// Update module config
+hass.callWS({
+  type: 'home_topology/locations/set_module_config',
+  location_id: 'kitchen',
+  module_id: 'occupancy',
+  config: { enabled: true, default_timeout: 600 }
+})
+  → { success: true }
+
+// Delete location
+hass.callWS({
+  type: 'home_topology/locations/delete',
+  location_id: 'kitchen'
+})
+  → { success: true }
+
+// Reorder locations
+hass.callWS({
+  type: 'home_topology/locations/reorder',
+  location_id: 'kitchen',
+  new_parent_id: 'floor-1',
+  new_index: 2
+})
+  → { success: true }
+```
+
+### 10.6 Reference Implementations
+
+Study these HA frontend patterns before building:
+
+| HA Component | Path in `home-assistant/frontend` | What to Learn |
+|--------------|-----------------------------------|---------------|
+| Area Registry | `src/panels/config/areas/` | Similar tree/list + editor pattern |
+| Automation Editor | `src/panels/config/automation/` | Complex form editing |
+| Entity Picker | `src/components/entity/ha-entity-picker.ts` | Filtered entity selection |
+| Dialog Pattern | `src/dialogs/` | Modal lifecycle, focus management |
+| Form Rendering | `src/components/ha-form/` | Schema → UI rendering |
+| Sortable Lists | `src/panels/lovelace/editor/` | Drag-and-drop patterns |
+
+### 10.7 Development Workflow
+
+1. **Setup**: Clone HA frontend repo, study referenced components
+2. **Scaffold**: Create integration structure with empty panel
+3. **Static UI**: Build components with mock data, no backend
+4. **Wire Backend**: Connect to WebSocket API
+5. **Polish**: Drag-and-drop, inline editing, animations
+6. **Test**: Manual testing in HA, accessibility audit
+7. **Release**: HACS submission, documentation
+
+#### Development Environment
+
+```bash
+# Option A: HA development container
+# https://developers.home-assistant.io/docs/development_environment
+
+# Option B: Local HA with symlinked custom_components
+ln -s /path/to/home-topology-ha/custom_components/home_topology \
+      /path/to/ha-config/custom_components/home_topology
+```
+
+### 10.8 Drag-and-Drop Strategy
+
+Drag-and-drop is the most complex interaction. Use a phased approach:
+
+**Phase 1 (MVP)**: No drag-and-drop
+- Use "Move to..." dropdown in context menu
+- Simpler to implement, fully functional
+- Ship early, gather feedback
+
+**Phase 2**: Add SortableJS
+```typescript
+import Sortable from 'sortablejs';
+
+firstUpdated() {
+  const el = this.shadowRoot!.querySelector('.location-list');
+  Sortable.create(el, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    onEnd: (evt) => this._handleDragEnd(evt),
+  });
+}
+```
+
+**Hierarchy constraints**: Validate moves before committing (see Section 5.3.1). Show visual feedback for invalid drops.
+
+### 10.9 Accessibility Checklist
+
+| Requirement | Implementation |
+|-------------|----------------|
+| Keyboard tree navigation | Arrow keys, Enter, Tab |
+| Screen reader | `role="tree"`, `role="treeitem"`, `aria-expanded` |
+| Focus visible | Use HA's focus styles (automatic) |
+| Color contrast | Use HA theme tokens (automatic) |
+| Reduced motion | Respect `prefers-reduced-motion` |
+| Dialog focus trap | `ha-dialog` handles this |
 
 ---
 
@@ -635,10 +957,11 @@ Options for HA panel implementation:
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1 | 2025-11-25 | Initial draft from Gemini Canvas mockup |
+| 0.2 | 2025-12-02 | **Technology decision: Lit**. Added component mapping, file structure, WebSocket API, reference implementations, development workflow. Removed TBD status from Section 10. |
 
 ---
 
-**Status**: Draft  
+**Status**: Design Complete (Implementation Ready)  
 **Owner**: Mike  
-**Next Review**: After Gemini Canvas iteration
+**Next Step**: Create `home-topology-ha` repository and scaffold integration
 

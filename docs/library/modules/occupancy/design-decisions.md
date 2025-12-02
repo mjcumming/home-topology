@@ -756,3 +756,79 @@ This "just works" with per-source tracking - no special interaction logic needed
 **Approved**: 2025-11-26  
 **Status**: Implementation Ready
 
+---
+
+## Decision 16: Door Sensor Patterns - Entry Door vs State Door
+
+### Context
+
+Door sensors have two distinct use cases:
+1. **Entry Door**: Door opening indicates someone entered (front door, entryway)
+2. **State Door**: Door state directly indicates occupancy (garage, storage room, closet)
+
+The question: Should we support both patterns, and how?
+
+### Decision
+
+**Support both patterns via configuration. Use `timeout=None` for state-based door sensors.**
+
+### Two Door Sensor Patterns
+
+| Pattern | ON Event | OFF Event | Use Case |
+|---------|----------|-----------|----------|
+| **Entry Door** | `TRIGGER(2m)` | `ignore` | Front door, entryway - opening indicates entry |
+| **State Door** | `TRIGGER(∞)` | `CLEAR(0)` | Garage, storage room - door state = occupancy state |
+
+### Rationale
+
+1. **Semantic accuracy**: For state doors, the door state IS the occupancy signal. No timeout needed because door closing triggers CLEAR.
+
+2. **Model supports it**: `timeout=None` means "indefinite until CLEAR is called" - exactly what we want for state-based sensors.
+
+3. **Per-source tracking**: Door sensor is a source that contributes while open. When it closes, we clear that source. Other sources (motion, presence) can still contribute independently.
+
+4. **Configuration choice**: Both patterns are supported by TRIGGER/CLEAR model. The difference is configuration, not model limitation.
+
+### Implementation
+
+```python
+# Entry Door Pattern (default)
+# Door opens
+trigger(location_id="entryway", source_id="door_sensor", timeout=120)  # 2 min
+# Door closes - ignored (timer handles expiration)
+
+# State Door Pattern
+# Door opens
+trigger(location_id="garage", source_id="door_sensor", timeout=None)  # Indefinite
+# Door closes
+clear(location_id="garage", source_id="door_sensor", trailing_timeout=0)  # Immediate
+```
+
+### Edge Cases
+
+**Sensor failure / door left open**:
+- This is a sensor health / user behavior issue, not an occupancy model issue
+- Solutions (integration layer):
+  1. Sensor health monitoring: Detect if sensor hasn't changed state in X hours
+  2. User notification: Alert if door open > X hours
+  3. Manual override: User can VACATE the location
+  4. Optional safety timeout: Integration can auto-CLEAR after X hours (integration logic, not core model)
+
+### UI Configuration
+
+The UI should make it easy to choose the pattern:
+- **Default**: Entry door pattern (`TRIGGER(2m), OFF→ignore`)
+- **Option**: "Door state indicates occupancy" checkbox → switches to state door pattern (`TRIGGER(∞), OFF→CLEAR(0)`)
+- Or: Explicit configuration in entity dialog with clear labels
+
+### Impact
+
+- Integration layer: Needs to support both patterns via configuration
+- UI: Needs clear way to configure state-based door sensors
+- Defaults: Entry door pattern is default (most common use case)
+
+---
+
+**Approved**: 2025-11-26  
+**Status**: Implementation Ready
+

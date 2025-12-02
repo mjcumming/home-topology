@@ -19,6 +19,31 @@ Occupancy, automations, energy logic, etc. are apps running on top.
 
 ---
 
+## Why Home Topology?
+
+If every room had a perfect presence sensor, occupancy detection would be trivial. But reality is different:
+
+- **Sensors are expensive** – $30-50 per room adds up fast for a whole house
+- **Batteries die** – Motion sensors need constant maintenance
+- **Devices go offline** – More devices = more failure points
+- **Coverage gaps** – Even good sensors miss corners and edges
+
+**Home Topology lets you use what you already have:**
+
+| Device | Occupancy Signal |
+|--------|------------------|
+| 💡 Light switch turned on | Someone's in the room |
+| 🚪 Door opened | Someone entered |
+| 📺 TV playing | Living room is occupied |
+| 🌡️ Thermostat adjusted | Someone's home |
+| 🔊 Speaker volume changed | Activity detected |
+
+Combine signals from motion sensors, switches, doors, media players, and more into reliable occupancy detection – **without buying more hardware**.
+
+Your storage room doesn't need a motion sensor. Turn on the light → room is occupied → lights turn off after timeout. Simple.
+
+---
+
 ## Features
 
 - 🧱 **Location graph (topology)**  

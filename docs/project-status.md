@@ -1,6 +1,6 @@
 # Work Tracking - home-topology Project
 
-**Last Updated**: 2025-11-25
+**Last Updated**: 2025-11-26
 
 ---
 
@@ -69,19 +69,33 @@
 
 ### 🔨 In Progress
 
-*None currently - OccupancyModule complete*
+*None currently - Automation refactor complete*
 
 ---
 
 ### 📅 Planned (Next Sprint)
 
-#### ActionsModule (0%)
-- [ ] Rule structure implementation
-- [ ] Trigger system
-- [ ] Condition evaluation
-- [ ] Action execution
-- [ ] Platform adapter interface
-- [ ] Tests
+#### Automation Engine (100%) ✅ (Refactored from ActionsModule)
+- [x] Rule structure implementation (AutomationRule, triggers, conditions, actions)
+- [x] Trigger system (event, state, time triggers)
+- [x] Condition evaluation (time of day, lux level, entity state, day of week)
+- [x] Action execution (service calls, delays)
+- [x] Platform adapter interface (with MockPlatformAdapter for testing)
+- [x] Renamed from `actions/` to `automation/` (layered architecture)
+- [x] Tests (59 tests passing)
+
+#### Lighting Module (100%) ✅ (New - split from ActionsModule)
+- [x] Lighting-specific presets moved from actions
+- [x] `lights_on_when_occupied()` preset
+- [x] `lights_off_when_vacant()` preset
+- [x] `scene_when_occupied()` preset
+- [x] `adaptive_lighting()` preset (time-based brightness)
+- [x] Tests (14 tests passing)
+
+#### Module Architecture (100%) ✅
+- [x] Layered architecture: domain modules use automation engine
+- [x] Backwards compatibility shim for `actions/` imports
+- [x] Architecture documentation (`docs/modules/automation-architecture.md`)
 
 #### Home Assistant Integration (0%)
 - [ ] Separate repository setup
@@ -133,24 +147,28 @@ Full list: See [decisions-pending.md](./decisions-pending.md)
 ## 📈 Progress Metrics
 
 ### Overall Project
-- **Completion**: ~45%
+- **Completion**: ~65%
 - **Architecture**: 100% ✅
 - **Core Kernel**: 100% ✅
 - **OccupancyModule**: 100% ✅
-- **ActionsModule**: 0% ⚪
+- **AutomationEngine**: 100% ✅
+- **LightingModule**: 100% ✅
 - **HA Integration**: 0% ⚪
 
 ### Code Stats
-- **Total Lines**: ~5,500 (code + docs)
+- **Total Lines**: ~9,000 (code + docs)
 - **Core Kernel**: ~600 lines
 - **OccupancyModule**: ~1,126 lines
-- **Tests**: ~2,600 lines (88 tests)
-- **Documentation**: ~1,600 lines
+- **AutomationEngine**: ~1,200 lines
+- **LightingModule**: ~300 lines
+- **Tests**: ~4,500 lines (142 tests in modules)
+- **Documentation**: ~2,500 lines
 
 ### Test Coverage
 - **Core**: ~80% (basic tests exist)
 - **Occupancy**: ~98% (88 tests, comprehensive suite)
-- **Actions**: 0%
+- **Automation**: ~95% (59 tests, comprehensive suite)
+- **Lighting**: ~95% (14 tests, comprehensive suite)
 
 ---
 
@@ -190,6 +208,27 @@ Track major decisions here with date and rationale.
 - **Approved By**: Discussion needed (see decisions-pending.md)
 - **Impact**: Low (name already established in 25+ files)
 
+### 2025-11-26
+
+#### Decision: Layered Automation Architecture
+- **Context**: Should actions module be split into domain modules (lighting, HVAC, media)?
+- **Decision**: Yes - create layered architecture with automation engine + domain modules
+- **Rationale**: 
+  - Automation engine provides generic rule processing
+  - Domain modules (lighting, climate, media) provide domain-specific APIs
+  - Simple configuration translates to complex rules internally
+  - Future domain modules can be added without changing engine
+- **Approved By**: Mike
+- **Impact**: Medium (restructured code, backwards-compat maintained)
+- **See**: `docs/modules/automation-architecture.md`
+
+#### Decision: Rename actions/ to automation/
+- **Context**: The "actions" module is really a generic automation engine
+- **Decision**: Rename to `automation/`, keep `actions/` as backwards-compat shim
+- **Rationale**: Better describes purpose, aligns with Home Assistant naming
+- **Approved By**: Mike
+- **Impact**: Low (backwards compatibility maintained via shim)
+
 ---
 
 ## 🎯 Milestones
@@ -197,20 +236,24 @@ Track major decisions here with date and rationale.
 ### v0.1.0 - Alpha Release (Target: TBD)
 - [x] Core kernel working
 - [x] OccupancyModule integrated
-- [x] OccupancyModule fully tested (76 tests)
-- [ ] ActionsModule basic implementation
-- [ ] Example scripts for both modules
+- [x] OccupancyModule fully tested (88 tests)
+- [x] AutomationEngine implementation
+- [x] LightingModule implementation
+- [x] Module architecture documentation
+- [ ] Example scripts for all modules
 - [ ] Documentation complete
 
 ### v0.2.0 - Beta Release (Target: TBD)
 - [ ] HA integration adapter
+- [ ] ClimateModule (future)
+- [ ] MediaModule (future)
 - [ ] UI for location/entity management
 - [ ] Config migration support
 - [ ] State persistence tested
 - [ ] Performance benchmarks
 
 ### v1.0.0 - Stable Release (Target: TBD)
-- [ ] Production-ready Occupancy and Actions
+- [ ] Production-ready Occupancy, Automation, Lighting
 - [ ] Full HA integration
 - [ ] Documentation site
 - [ ] >90% test coverage
@@ -271,15 +314,15 @@ Use these labels for GitHub issues:
 
 ### This Week
 1. [x] Complete OccupancyModule tests ✅
-2. [ ] Start ActionsModule implementation
-3. [ ] Decide on license (MIT recommended)
-4. [ ] Set up CI/CD (GitHub Actions)
+2. [x] ActionsModule implementation ✅
+3. [x] Decide on license (MIT) ✅
+4. [x] Set up CI/CD (GitHub Actions) ✅
 
 ### Next Week
-1. [ ] Finish ActionsModule basic implementation
-2. [ ] Start HA integration planning
-3. [ ] Create project roadmap
-4. [ ] Set up project board (GitHub Projects)
+1. [ ] Start HA integration planning
+2. [ ] Create project roadmap
+3. [ ] Set up project board (GitHub Projects)
+4. [ ] Create integration tests (Occupancy + Actions together)
 
 ---
 

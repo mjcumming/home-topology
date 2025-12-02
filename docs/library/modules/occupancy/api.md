@@ -108,7 +108,12 @@ module.clear(
 
 ### Door Sensors
 
-**Entry door (momentary)**:
+Door sensors have two distinct patterns:
+
+#### Pattern 1: Entry Door (Default)
+
+Door opening indicates someone entered:
+
 ```python
 # Front door opened
 module.trigger(
@@ -116,13 +121,34 @@ module.trigger(
     source_id="binary_sensor.front_door",
     timeout=120,  # 2 minutes
 )
+# Door closed is ignored - timer handles expiration
 ```
 
-**Exit door (force vacant)** - optional configuration:
+**Use cases**: Front door, entryway, room doors
+
+#### Pattern 2: State Door
+
+Door state directly indicates occupancy:
+
 ```python
-# Garage door closed (everyone left)
-module.vacate(location_id="house")
+# Garage door opened
+module.trigger(
+    location_id="garage",
+    source_id="binary_sensor.garage_door",
+    timeout=None,  # Indefinite - door state is the signal
+)
+
+# Garage door closed
+module.clear(
+    location_id="garage",
+    source_id="binary_sensor.garage_door",
+    trailing_timeout=0,  # Immediate - door closed = vacant
+)
 ```
+
+**Use cases**: Garage door, storage room, closet - door state = occupancy state
+
+**Key insight**: `timeout=None` means "indefinite until CLEAR is called". The door closing triggers CLEAR, so no timeout is needed.
 
 ### Media Players
 

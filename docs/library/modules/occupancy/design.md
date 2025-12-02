@@ -430,7 +430,11 @@ module.clear(
 # Contribution updated: expires in 2 min
 ```
 
-### Door Sensor (TRIGGER with Short Timeout)
+### Door Sensors (Two Patterns)
+
+#### Pattern 1: Entry Door (Default)
+
+Door opening indicates someone entered:
 
 ```python
 # Door opened - integration calls trigger()
@@ -441,6 +445,32 @@ module.trigger(
 )
 # Door closed is ignored (timer handles expiration)
 ```
+
+**Use cases**: Front door, entryway, room doors
+
+#### Pattern 2: State Door
+
+Door state directly indicates occupancy:
+
+```python
+# Garage door opened
+module.trigger(
+    location_id="garage",
+    source_id="binary_sensor.garage_door",
+    timeout=None,  # Indefinite - door state is the signal
+)
+
+# Garage door closed
+module.clear(
+    location_id="garage",
+    source_id="binary_sensor.garage_door",
+    trailing_timeout=0,  # Immediate - door closed = vacant
+)
+```
+
+**Use cases**: Garage door, storage room, closet - door state = occupancy state
+
+**Key insight**: `timeout=None` means "indefinite until CLEAR is called". The door closing triggers CLEAR, so no timeout is needed.
 
 ### Light Switch (VACATE Command)
 

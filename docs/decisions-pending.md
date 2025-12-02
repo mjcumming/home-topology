@@ -111,9 +111,15 @@ Consider all-contributors bot later if community grows.
 
 These will be addressed when we reach that phase of development:
 
-### Actions Module Design 🎬
-- Distant future add-on
-- Design when we start Actions module work
+### Actions Module Design 🎬 ✅
+- **Status**: Complete (2025-11-26)
+- Implemented rule-based automation with:
+  - Event triggers (occupancy.changed, etc.)
+  - Condition types (time_of_day, lux_level, state, numeric_state, location_occupied, day_of_week)
+  - Action types (service_call, delay)
+  - Execution modes (single, restart, parallel)
+  - Pre-built presets for common patterns
+- 68 tests passing
 
 ### Sync Conflict Resolution 🔄
 - Integration-level concern
