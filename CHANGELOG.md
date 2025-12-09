@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- TBD
+
+---
+
+## [0.2.0-alpha] - 2025-12-09
+
+### Added
 
 #### Core Library Enhancements (2025.12.09)
 - **Alias support**: `Location` dataclass now has `aliases: List[str]` field for voice assistant integration
