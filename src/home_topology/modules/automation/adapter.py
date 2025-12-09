@@ -177,5 +177,3 @@ class MockPlatformAdapter(PlatformAdapter):
         from datetime import UTC
 
         return datetime.now(UTC)
-
-

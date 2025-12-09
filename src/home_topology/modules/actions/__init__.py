@@ -31,7 +31,7 @@ warnings.warn(
 )
 
 # Re-export everything from automation for backwards compatibility
-from home_topology.modules.automation import (
+from home_topology.modules.automation import (  # noqa: E402
     # Module (with alias)
     AutomationModule as ActionsModule,
     AutomationModule,
@@ -83,7 +83,7 @@ from home_topology.modules.automation import (
 )
 
 # Re-export lighting presets for backwards compatibility
-from home_topology.modules.lighting import (
+from home_topology.modules.lighting import (  # noqa: E402
     lights_on_when_occupied,
     lights_off_when_vacant,
     scene_when_occupied,

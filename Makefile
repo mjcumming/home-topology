@@ -57,9 +57,14 @@ lint:
 typecheck:
 	mypy src/
 
-# Run example
+# Run examples
 example:
 	PYTHONPATH=src python3 example.py
+
+example-presence:
+	PYTHONPATH=src python3 examples/presence-example.py
+
+examples: example example-presence
 
 # Combined checks
 check: format lint typecheck test

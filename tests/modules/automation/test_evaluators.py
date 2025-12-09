@@ -273,5 +273,3 @@ class TestIsNighttime:
 
         result = is_nighttime(platform)
         assert result is False
-
-

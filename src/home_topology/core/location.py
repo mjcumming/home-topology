@@ -24,6 +24,7 @@ class Location:
         ha_area_id: Optional link to Home Assistant Area
         entity_ids: Platform entity IDs mapped to this location
         modules: Per-module configuration blobs
+        aliases: Alternative names for this location (used by voice assistants)
     """
 
     id: str
@@ -33,3 +34,4 @@ class Location:
     ha_area_id: Optional[str] = None
     entity_ids: List[str] = field(default_factory=list)
     modules: Dict[str, Dict] = field(default_factory=dict)
+    aliases: List[str] = field(default_factory=list)

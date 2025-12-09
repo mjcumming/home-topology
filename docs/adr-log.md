@@ -494,6 +494,211 @@ Define explicit integration layer responsibilities:
 
 ---
 
+### ADR-020: Alias Support and Batch Operations (2025.12.09)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Voice assistants need alternative names for locations
+- Bulk entity operations needed for efficiency (HA sync, reorganization)
+- Similar features exist in other HA integrations
+
+**Decision**:
+1. **Aliases**: Add native `aliases: List[str]` field to `Location` dataclass
+2. **Batch Operations**: Add batch methods to `LocationManager`:
+   - `add_entities_to_location(entity_ids: List[str], location_id: str)`
+   - `remove_entities_from_location(entity_ids: List[str])`
+   - `move_entities(entity_ids: List[str], to_location_id: str)`
+
+**Rationale**:
+- **Aliases**: Universal feature across platforms (Google, Alexa, Siri, HA Assist)
+- **Batch Ops**: More efficient than individual calls for bulk operations
+- **Core Library**: Both are platform-agnostic, belong in core not integration
+- **Simple**: Easy to implement, test, and use
+
+**Consequences**:
+- ✅ Voice assistants can use alternative names ("Lounge" → "Living Room")
+- ✅ Efficient bulk import/export for HA sync
+- ✅ Better automation support (programmatic location creation)
+- ✅ Backward compatible (aliases default to empty list)
+- ⚠️ Increases `Location` dataclass size slightly
+- ⚠️ Integrations must handle alias sync if platform supports it
+
+**Implementation**:
+- Added `aliases` field to `Location` dataclass
+- Added alias management methods to `LocationManager`:
+  - `add_alias()`, `add_aliases()`, `remove_alias()`, `set_aliases()`
+  - `find_by_alias()`, `get_location_by_name()`
+- Added batch entity methods to `LocationManager`
+- Added 16 comprehensive tests (all passing)
+- Updated architecture.md documentation
+
+**Alternatives Considered**:
+1. **Store aliases in `modules["_meta"]`**: Rejected - too indirect for universal feature
+2. **Only in HA integration**: Rejected - other platforms need aliases too
+3. **Separate alias registry**: Rejected - unnecessary complexity
+
+---
+
+### ADR-021: Remove Confidence from Occupancy (2025.12.09)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Initial design included `confidence` score (0.0-1.0) in occupancy state
+- Question: What do you actually DO with a confidence value?
+- Years of real-world experience showed confidence added complexity without value
+
+**Decision**:
+Occupancy is **binary only**: occupied (True/False). No confidence score.
+
+```python
+# Before (too complex)
+{
+    "occupied": True,
+    "confidence": 0.85  # What action do you take differently at 0.85 vs 0.95?
+}
+
+# After (simple)
+{
+    "occupied": True  # That's it.
+}
+```
+
+**Rationale**:
+- **No clear use case**: You either turn lights on or you don't - no middle ground
+- **Complexity without benefit**: Tracking confidence requires complex sensor weighting
+- **Real-world experience**: After years of implementation, confidence wasn't used
+- **Keep it simple**: Binary state is clear and actionable
+
+**Consequences**:
+- ✅ Simpler occupancy logic
+- ✅ Easier to understand and configure
+- ✅ Faster implementation
+- ✅ If needed later, can add as separate module feature
+- ⚠️ Can't express "probably occupied" - but no use case for this
+
+**Implementation**:
+- Removed confidence from OccupancyState
+- Removed from all occupancy events
+- Removed from documentation
+- Simplified tests
+
+---
+
+### ADR-022: No Event Coordination Between Modules (2025.12.09)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Occupancy events fire immediately (motion sensor)
+- Presence events fire later (camera/BLE detection, 2-5 seconds)
+- Question: Should we coordinate/delay events to get complete picture?
+
+**Decision**:
+Modules emit events **independently and immediately**. No artificial delays, no waiting for other modules.
+
+**Rationale**:
+- **90% of cases don't need person identification**: "Turn lights on when occupied" - who cares who it is?
+- **Real-world timing**: Sensors fire in seconds, not milliseconds - no realistic coordination window
+- **User control**: User can choose to wait (DelayAction) or let sequential events override
+- **Simpler architecture**: No coupling between modules
+- **Flexibility**: Multiple patterns supported without framework complexity
+
+**Consequences**:
+- ✅ Fast occupancy response (no artificial delays)
+- ✅ Modules stay independent
+- ✅ Simple cases remain simple
+- ✅ User chooses wait strategy
+- ⚠️ Sequential events may trigger multiple actions (by design - later overrides earlier)
+
+**Supported Patterns**:
+
+```python
+# Pattern 1: Immediate response, later override
+Rule 1: occupancy.changed → Generic lights ON (T+0s)
+Rule 2: presence.changed (mike) → Mike's scene (T+3s, overrides)
+
+# Pattern 2: User-chosen wait
+Rule: occupancy.changed → Delay 5s → Check presence → Conditional action
+
+# Pattern 3: Ignore presence (most common)
+Rule: occupancy.changed → Lights ON (done)
+```
+
+**Timeline Example**:
+```
+T+0.0s: Motion sensor → occupancy.changed → Lights ON (generic)
+T+3.0s: Camera detects Mike → presence.changed → Mike's scene applies
+Result: Lights came on immediately, then personalized 3s later ✅
+```
+
+**Alternatives Considered**:
+1. **Stabilization delay in OccupancyModule**: Rejected - adds latency for all cases
+2. **Event aggregation window**: Rejected - complex, rigid timing assumptions
+3. **Dual-trigger rules**: Rejected - over-engineered for rare use case
+
+---
+
+### ADR-023: PresenceModule as Separate Module (2025.12.09)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Need to track WHO is in locations, not just THAT someone is there
+- Question: Extend OccupancyModule or separate module?
+
+**Decision**:
+PresenceModule is a **separate module** that tracks identified entities (people, pets, objects) in locations.
+
+**Architecture**:
+```python
+OccupancyModule:
+  - Answers: "Is someone there?"
+  - Source: Motion sensors, door sensors
+  - Events: occupancy.changed
+  - State: { occupied: True/False }
+
+PresenceModule:
+  - Answers: "WHO is there?"
+  - Source: Device trackers, cameras, BLE tags
+  - Events: presence.changed
+  - State: { people: ["mike", "sarah"], person_entered: "mike" }
+
+ActionsModule:
+  - Listens to both event types
+  - Can use either or both in rules
+```
+
+**Rationale**:
+- **Different detection methods**: Passive sensors vs active trackers
+- **Different update rates**: Instant (sensors) vs delayed (trackers)
+- **Independent information**: Room can be occupied without known person (guest, pet)
+- **Optional feature**: Most automations don't need person identification
+- **Clean separation**: Each module has single responsibility
+
+**Consequences**:
+- ✅ Modules stay focused and simple
+- ✅ Can use occupancy without presence
+- ✅ Can use presence without occupancy
+- ✅ ActionsModule composes both event streams
+- ✅ Future-proof for pets, objects, other tracked entities
+- ⚠️ Slightly more modules to understand (but clearer)
+
+**Implementation**:
+- Person data class with current_location_id
+- PresenceModule maintains person registry
+- Device tracker events update person locations
+- Emits presence.changed events
+- Generic core, HA integration uses HA Person entities
+
+**Alternatives Considered**:
+1. **Extend OccupancyModule**: Rejected - mixes detection with identification
+2. **Store in LocationManager**: Rejected - LocationManager is structure, not behavior
+3. **People as Locations**: Rejected - confusing, people ARE IN locations, not locations themselves
+
+---
+
 ## Rejected Decisions
 
 ### REJECTED: Adapter Layer for Occupancy

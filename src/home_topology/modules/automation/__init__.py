@@ -111,5 +111,3 @@ __all__ = [
     "fan_off_when_vacant",
     "media_off_when_vacant",
 ]
-
-

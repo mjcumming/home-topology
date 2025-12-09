@@ -86,7 +86,10 @@ class Location:
     ha_area_id: Optional[str]        # Optional link to HA Area
     entity_ids: List[str]            # Platform entities in this location
     modules: Dict[str, Dict]         # Per-module config blobs
+    aliases: List[str]               # Alternative names (for voice assistants)
 ```
+
+**Aliases**: Alternative names for a location, used by voice assistants (Google Assistant, Alexa, HA Assist). Example: A location named "Living Room" might have aliases `["Lounge", "TV Room", "Front Room"]`.
 
 **Root vs Unassigned**: When `parent_id` is None:
 - `is_explicit_root=True`: Intentional top-level (e.g., "House", "Garage")
@@ -193,17 +196,110 @@ It provides:
 
 ```python
 class LocationManager:
+    # Location CRUD
     def create_location(...) -> Location
     def get_location(location_id: str) -> Optional[Location]
+    def get_location_by_name(name: str) -> Optional[Location]
+    def all_locations() -> List[Location]
+    
+    # Hierarchy queries
     def parent_of(location_id: str) -> Optional[Location]
     def children_of(location_id: str) -> List[Location]
     def ancestors_of(location_id: str) -> List[Location]
     def descendants_of(location_id: str) -> List[Location]
+    
+    # Entity mapping
     def add_entity_to_location(entity_id: str, location_id: str)
     def get_entity_location(entity_id: str) -> Optional[str]
+    def add_entities_to_location(entity_ids: List[str], location_id: str)
+    def remove_entities_from_location(entity_ids: List[str])
+    def move_entities(entity_ids: List[str], to_location_id: str)
+    
+    # Alias management
+    def add_alias(location_id: str, alias: str)
+    def add_aliases(location_id: str, aliases: List[str])
+    def remove_alias(location_id: str, alias: str)
+    def set_aliases(location_id: str, aliases: List[str])
+    def find_by_alias(alias: str) -> Optional[Location]
+    
+    # Module configuration
     def set_module_config(location_id: str, module_id: str, config: Dict)
     def get_module_config(location_id: str, module_id: str) -> Optional[Dict]
 ```
+
+**New in v1.5**: Alias management and batch entity operations for improved programmatic control and voice assistant integration.
+
+### 4.3 Alias Management
+
+Locations support **aliases** - alternative names used by voice assistants and search/discovery features.
+
+**Use Cases**:
+- Voice assistant commands: "Turn off lights in the lounge" → "lounge" is alias for "Living Room"
+- Seasonal names: "Christmas Room" alias for "Living Room" during December
+- Regional variations: "Ground Floor" and "First Floor" aliases for same location
+- Multiple languages: "Cuisine" and "Kitchen" for multilingual homes
+
+**Example**:
+
+```python
+# Create location with aliases
+kitchen = loc_mgr.create_location(
+    id="kitchen",
+    name="Kitchen",
+    aliases=["Cuisine", "Cooking Area", "Chef's Domain"]
+)
+
+# Add alias later
+loc_mgr.add_alias("kitchen", "Breakfast Nook")
+
+# Add multiple aliases
+loc_mgr.add_aliases("kitchen", ["Food Prep", "Galley"])
+
+# Replace all aliases
+loc_mgr.set_aliases("kitchen", ["Cuisine"])
+
+# Remove specific alias
+loc_mgr.remove_alias("kitchen", "Cuisine")
+
+# Find by alias
+location = loc_mgr.find_by_alias("Lounge")  # Returns living room location
+```
+
+**Integration Notes**:
+- Integrations should sync aliases with platform voice features
+- HA integration syncs with HA area aliases
+- UI should show aliases in search and voice assistant configuration
+
+### 4.4 Batch Entity Operations
+
+For efficiency when managing multiple entities:
+
+```python
+# Add multiple entities at once
+loc_mgr.add_entities_to_location(
+    entity_ids=["light.1", "light.2", "light.3"],
+    location_id="kitchen"
+)
+
+# Remove multiple entities from their locations
+loc_mgr.remove_entities_from_location(
+    entity_ids=["light.old_1", "light.old_2"]
+)
+
+# Move entities between locations
+loc_mgr.move_entities(
+    entity_ids=["light.1", "light.2"],
+    to_location_id="dining_room"
+)
+```
+
+**Use Cases**:
+- Bulk import from platform (HA areas → locations)
+- Reorganization workflows
+- Automation-driven entity assignment
+- Integration sync operations
+
+**Performance**: Batch operations are more efficient than individual calls when operating on multiple entities.
 
 ---
 
@@ -460,16 +556,25 @@ def restore_state(self, state: Dict) -> None:
 
 The `home-topology` kernel ships with these modules:
 
-- **OccupancyModule** - Track occupancy state per location  
-  See [docs/modules/occupancy-design.md](./modules/occupancy-design.md)
+**Implemented Modules**:
 
-- **ActionsModule** - Execute automations based on semantic events  
-  See [docs/modules/actions-design.md](./modules/actions-design.md)
+- **OccupancyModule** - Track binary occupancy state per location (occupied/vacant, no confidence scoring)  
+  See [docs/modules/occupancy-integration.md](./modules/occupancy-integration.md)
 
-Future modules:
+- **AutomationEngine** - Generic rule-based automation processor  
+  See [docs/modules/automation-architecture.md](./modules/automation-architecture.md)
+
+- **LightingModule** - Lighting-specific automation presets (uses AutomationEngine)  
+  See [docs/modules/automation-architecture.md](./modules/automation-architecture.md)
+
+- **PresenceModule** - Track WHO is in each location (person tracking with device trackers)  
+  See [docs/modules/presence-module-design.md](./modules/presence-module-design.md)
+
+**Future Modules**:
 - **ComfortModule** - Temperature, humidity, air quality per location
 - **EnergyModule** - Power, energy consumption per location
 - **SecurityModule** - Alarm state, lock state per location
+- **MediaModule** - Media playback coordination per location
 
 ---
 
@@ -811,9 +916,11 @@ Host platform (HA) could manage multiple kernel instances.
 - **v1.3**: Refactored - moved module implementation details to separate docs, added Division of Responsibilities section
 - **v1.4**: Added module granularity (global enable), sync model, event normalization, "Unassigned" clarification
 - **v1.5**: Updated feedback loop prevention to reflect integration-driven classification (dropped primary/secondary signals)
+- **v1.6**: Added alias support and batch entity operations (2025.12.09)
+- **v1.7**: Clarified occupancy is binary (no confidence), added PresenceModule design, documented no event coordination pattern (2025.12.09)
 
 ---
 
 **Document Status**: Active  
-**Last Updated**: 2025-11-24
+**Last Updated**: 2025.12.09
 

@@ -105,6 +105,46 @@ Consider all-contributors bot later if community grows.
 - Each entity can override with specific timeout
 - If entity doesn't specify, inherits from location
 
+### 18. Alias Support 🎤
+**Decision**: Native field in Location dataclass  
+**Date**: 2025.12.09  
+- Universal feature for voice assistants (Google, Alexa, HA Assist, Siri)
+- Simple to implement and query
+- HA integration syncs with HA area aliases
+- Supports multiple alternative names per location
+
+### 19. Batch Entity Operations ⚡
+**Decision**: Add batch methods to LocationManager  
+**Date**: 2025.12.09  
+- `add_entities_to_location()` - assign multiple entities at once
+- `remove_entities_from_location()` - remove multiple entities
+- `move_entities()` - move multiple entities between locations
+- More efficient than individual calls for bulk operations
+
+### 20. Occupancy: Binary Only (No Confidence) 🎯
+**Decision**: Occupancy is binary (True/False), no confidence scoring  
+**Date**: 2025.12.09  
+- After years of real-world experience: confidence doesn't add value
+- No clear use case for "maybe occupied" - you either act or don't
+- Simpler implementation, easier to understand
+- If needed later, can add as optional module feature
+
+### 21. No Event Coordination Between Modules 🔄
+**Decision**: Modules emit events independently and immediately, no delays  
+**Date**: 2025.12.09  
+- 90% of automations don't need person identification
+- Real-world sensor timing: seconds, not milliseconds
+- User can choose to wait (DelayAction) or accept sequential override
+- Simpler architecture, more flexible
+
+### 22. PresenceModule Implementation 👥
+**Decision**: Implement PresenceModule now (v0.2), not defer to v0.4  
+**Date**: 2025.12.09  
+- Simple to implement (33 tests, ~350 lines)
+- Validates architecture early
+- Person registry separate from LocationManager
+- Platform-agnostic core, HA integration uses HA Person entities
+
 ---
 
 ## 🔮 Deferred (Design Later)

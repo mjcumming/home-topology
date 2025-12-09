@@ -18,34 +18,35 @@
 ## 2. Documentation Structure (When to Read What)
 
 ### 🎯 Before Starting ANY Task
-**Read**: `WORK-TRACKING.md`
+**Read**: `docs/project-status.md`
 - Check what's already in progress
 - Avoid duplicate work
 - Update status as you work
 
 ### 🏗️ For Architecture Decisions
-**Read**: `DESIGN.md` (kernel architecture)
-**Then**: Check `ADR-LOG.md` for prior decisions
-**If new decision**: Add to `ADR-LOG.md` with rationale
+**Read**: `docs/architecture.md` (kernel architecture)
+**Then**: Check `docs/adr-log.md` for prior decisions
+**If new decision**: Add to `docs/adr-log.md` with rationale
 
 ### 📦 For Module Implementation
 **Read**: 
 - `docs/modules/occupancy-design.md` (if working on occupancy)
-- `docs/modules/actions-design.md` (if working on actions)
+- `docs/modules/automation-architecture.md` (if working on automation)
+- Specific module design docs as needed
 
 ### 💻 For Coding Style
-**Read**: `CODING-STANDARDS.md`
+**Read**: `docs/coding-standards.md`
 - File naming, type hints, docstrings
 - Architecture patterns
 - Testing standards
 
 ### ❓ When Unsure
-**Read**: `docs/open-questions.md`
+**Read**: `docs/decisions-pending.md`
 - Check if question already exists
 - If not, ADD it with priority level
 
 ### 🤝 For Contribution Workflow
-**Read**: `CONTRIBUTING.md`
+**Read**: `.github/pull_request_template.md` and `docs/coding-standards.md`
 
 ---
 
@@ -106,64 +107,134 @@ Event(
 ## 5. Workflow Rules
 
 ### Starting Work
-1. Read `WORK-TRACKING.md` first
+1. Read `docs/project-status.md` first
 2. Move task to "In Progress"
 3. Create feature branch
 4. Read relevant module design doc
 
 ### Making Changes
 1. Code + tests together (test coverage must not decrease)
-2. Update docs in same commit
+2. Update CHANGELOG.md and docs in same commit
 3. Run `make check` before committing
 
 ### Big Decisions
-1. Check `ADR-LOG.md` - already decided?
-2. If new: Add to `ADR-LOG.md` with context + rationale
-3. Update `WORK-TRACKING.md` decision log section
+1. Check `docs/adr-log.md` - already decided?
+2. If new: Add to `docs/adr-log.md` with context + rationale
+3. Update `docs/project-status.md` decision log section
 
 ### Finishing Work
 1. Tests pass (`make test`)
 2. Linting passes (`make check`)
-3. Docs updated
-4. Move task to "Completed" in `WORK-TRACKING.md`
+3. CHANGELOG.md and docs updated
+4. Move task to "Completed" in `docs/project-status.md`
 5. Create PR with description
 
 ---
 
-## 6. When to Read Full Documents
+## 6. Documentation Workflow (CRITICAL)
 
-### Read DESIGN.md When:
-- Working on kernel components (Location, EventBus, LocationManager)
-- Need to understand event flow
-- Designing new core features
-- **Skip**: If working on module implementation details
+### ❌ NEVER Create These Files:
+- `2025.XX.XX-*.md` - Dated completion reports
+- `YYYY.MM.DD-summary.md` - Work summaries
+- Any standalone "what we did" reports
 
-### Read Module Design Docs When:
-- Implementing or modifying a specific module
-- Need signal handling details (occupancy)
-- Need rule engine details (actions)
-- **Skip**: If working on core kernel
+**Why?** Information belongs in proper locations, not duplicate reports.
 
-### Read CODING-STANDARDS.md When:
-- Unsure about naming conventions
-- Need architecture pattern examples
-- Writing tests
-- **Skip**: If you already know the style
+---
 
-### Read WORK-TRACKING.md:
-- **ALWAYS** at start of session
-- **ALWAYS** when starting/finishing tasks
-- **ALWAYS** when blocked
+### ✅ Documentation Workflow by Task Type
 
-### Read ADR-LOG.md When:
-- Making architectural decisions
-- Wondering "why did we do it this way?"
-- **Skip**: For day-to-day coding
+#### For Design Work (Pre-Implementation)
 
-### Read docs/open-questions.md When:
-- Have a question that needs team input
-- Before asking user a question (might be answered)
-- **Skip**: If task is straightforward
+**Create/Update:**
+1. **Design doc** in proper location:
+   - Module design → `docs/modules/{module}-design.md`
+   - Integration guide → `docs/integration/{feature}.md`
+   - Core architecture → Update `docs/architecture.md`
+
+2. **Add to roadmap**:
+   - Add to `docs/project-status.md` under "Future Features (Designed)"
+   - Include target version, status, brief description
+
+3. **DONE** - No summary files!
+
+**Example:**
+```
+✅ Created: docs/modules/presence-module-design.md
+✅ Updated: docs/project-status.md (added to Future Features)
+❌ NO: docs/2025.12.09-presence-design-complete.md
+```
+
+---
+
+#### For Implementation Work (Code Changes)
+
+**Update:**
+1. **CHANGELOG.md** - Add under `[Unreleased]` section:
+   - `### Added` - New features
+   - `### Changed` - Changes to existing functionality
+   - `### Fixed` - Bug fixes
+   - `### Documentation` - Doc updates
+
+2. **Architecture docs** (if core API changed):
+   - Update `docs/architecture.md` with new methods/classes
+   - Keep version number current
+
+3. **ADR-LOG.md** (if architectural decision):
+   - Add ADR entry with context, decision, rationale
+   - Only for significant architectural choices
+
+4. **project-status.md** (if major milestone):
+   - Move items from Planned → Completed
+   - Update metrics
+
+5. **DONE** - No completion reports!
+
+**Example:**
+```
+✅ Updated: CHANGELOG.md (added alias support to [Unreleased])
+✅ Updated: docs/architecture.md (v1.6 with new methods)
+✅ Added: ADR-020 to docs/adr-log.md
+❌ NO: docs/2025.12.09-core-enhancements.md
+```
+
+---
+
+### Document Purpose Reference
+
+| Document | Purpose | Update When |
+|----------|---------|-------------|
+| **CHANGELOG.md** | User-facing changes | Every feature/fix/change |
+| **docs/architecture.md** | Current system design | Core API changes |
+| **docs/adr-log.md** | Architectural decisions | Big design choices |
+| **docs/project-status.md** | Roadmap & work tracking | Sprint changes, milestones |
+| **docs/modules/*.md** | Module specifications | Designing/changing modules |
+| **docs/integration/*.md** | Integration guides | Platform-specific features |
+| **docs/decisions-pending.md** | Open questions | Need team input |
+| ~~**2025.XX.XX-*.md**~~ | ~~Nothing~~ | ~~NEVER~~ ❌ |
+
+---
+
+### Why No Completion Reports?
+
+**Bad:**
+```
+docs/2025.12.09-core-enhancements.md (282 lines)
+  - Lists what changed ← Already in CHANGELOG.md
+  - Lists files modified ← Git handles this
+  - Lists design decisions ← Already in ADR-LOG.md
+  - Lists tests passing ← CI handles this
+  = 100% duplicate information
+```
+
+**Good:**
+```
+CHANGELOG.md: "Added alias support with 6 new methods"
+docs/architecture.md: Updated LocationManager API documentation
+docs/adr-log.md: ADR-020 explains why aliases in core
+Git commit: Shows exact files changed
+= Single source of truth for each piece of information
+```
 
 ---
 
@@ -172,15 +243,15 @@ Event(
 ### Instead of Reading Everything:
 ```python
 # ❌ DON'T DO THIS
-read_file("DESIGN.md")
-read_file("CODING-STANDARDS.md") 
-read_file("WORK-TRACKING.md")
+read_file("docs/architecture.md")
+read_file("docs/coding-standards.md") 
+read_file("docs/project-status.md")
 read_file("docs/modules/occupancy-design.md")
 # ... spam all docs
 
 # ✅ DO THIS
 # Task: "Add timeout tests for occupancy"
-read_file("WORK-TRACKING.md")  # Check status
+read_file("docs/project-status.md")  # Check status
 read_file("docs/modules/occupancy-design.md")  # Get implementation details
 # That's it! Other rules are in this .cursorrules file
 ```
@@ -196,7 +267,36 @@ codebase_search("how are occupancy timeouts calculated", ["src/home_topology/mod
 
 ---
 
-## 8. Quick Decision Tree
+## 8. Smart Document Loading Strategy
+
+### Instead of Reading Everything:
+```python
+# ❌ DON'T DO THIS
+read_file("docs/architecture.md")
+read_file("docs/coding-standards.md") 
+read_file("docs/project-status.md")
+read_file("docs/modules/occupancy-design.md")
+# ... spam all docs
+
+# ✅ DO THIS
+# Task: "Add timeout tests for occupancy"
+read_file("docs/project-status.md")  # Check status
+read_file("docs/modules/occupancy-design.md")  # Get implementation details
+# That's it! Other rules are in this .cursorrules file
+```
+
+### Use grep/codebase_search:
+```python
+# Looking for how EventBus is used?
+grep("EventBus", path="src/")
+
+# Looking for occupancy timeout logic?
+codebase_search("how are occupancy timeouts calculated", ["src/home_topology/modules/occupancy"])
+```
+
+---
+
+## 9. Quick Decision Tree
 
 ```
 Am I working on kernel core (Location, EventBus, Manager)?
@@ -218,7 +318,29 @@ Am I working on kernel core (Location, EventBus, Manager)?
 
 ---
 
-## 9. Anti-Patterns to Avoid
+## 10. Anti-Patterns to Avoid
+
+### ❌ Don't:
+- Read all docs at start of every conversation
+- Ignore WORK-TRACKING.md (leads to duplicate work)
+- Make big decisions without logging in ADR-LOG.md
+- Create new patterns without checking CODING-STANDARDS.md
+- Forget to update docs when changing code
+- **Create dated completion reports (2025.XX.XX-*.md)**
+- **Duplicate information across multiple docs**
+
+### ✅ Do:
+- Read only what's needed for current task
+- Always update WORK-TRACKING.md
+- Log decisions immediately
+- Update docs in same commit as code
+- Use grep/search before reading entire files
+- **Put each piece of information in ONE proper place**
+- **Update CHANGELOG.md for all user-facing changes**
+
+---
+
+## 11. Example Scenarios
 
 ### ❌ Don't:
 - Read all docs at start of every conversation
@@ -234,41 +356,55 @@ Am I working on kernel core (Location, EventBus, Manager)?
 - Update docs in same commit as code
 - Use grep/search before reading entire files
 
----
-
-## 10. Example Scenarios
-
 ### Scenario: "Add motion sensor support to occupancy"
 ```
-1. Read WORK-TRACKING.md (check if already in progress)
+1. Read docs/project-status.md (check if already in progress)
 2. Read docs/modules/occupancy-design.md (understand signals)
 3. grep("motion", path="src/home_topology/modules/occupancy/")
 4. Code + test
-5. Update WORK-TRACKING.md
+5. Update CHANGELOG.md (add to [Unreleased] → Added)
+6. Update docs/project-status.md
 ```
-**Don't need**: DESIGN.md, CODING-STANDARDS.md (covered by .cursorrules)
+**Don't need**: docs/architecture.md, docs/coding-standards.md (covered by .cursorrules)
+**Don't create**: 2025.XX.XX-motion-sensor-complete.md ❌
 
 ### Scenario: "Design new EnergyModule"
 ```
-1. Read DESIGN.md (understand module architecture)
+1. Read docs/architecture.md (understand module architecture)
 2. Read docs/modules/occupancy-design.md (example module)
-3. Check ADR-LOG.md (prior module decisions)
+3. Check docs/adr-log.md (prior module decisions)
 4. Create docs/modules/energy-design.md
-5. Add to WORK-TRACKING.md as planned
+5. Add to docs/project-status.md (Future Features section)
 ```
+**Don't create**: 2025.XX.XX-energy-design.md ❌
 
 ### Scenario: "Fix a bug"
 ```
-1. Read WORK-TRACKING.md (log the bug)
+1. Read docs/project-status.md (log the bug)
 2. grep the error or use codebase_search
 3. Fix + test
-4. Update WORK-TRACKING.md (completed)
+4. Update CHANGELOG.md (add to [Unreleased] → Fixed)
+5. Update docs/project-status.md (completed)
 ```
 **Don't need**: Design docs unless bug is architectural
 
+### Scenario: "Implement alias support feature"
+```
+1. Code + tests
+2. Update CHANGELOG.md:
+   [Unreleased]
+   ### Added
+   - Alias support in Location dataclass
+   - 6 alias management methods in LocationManager
+3. Update docs/architecture.md (document new methods)
+4. Add ADR-020 to docs/adr-log.md (why aliases in core)
+5. DONE
+```
+**Don't create**: docs/2025.12.09-alias-implementation.md ❌
+
 ---
 
-## 11. Commit Message Format
+## 12. Commit Message Format
 
 ```
 <type>(<scope>): <subject>
@@ -282,7 +418,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 ---
 
-## 12. Testing Requirements
+## 13. Testing Requirements
 
 - All new code MUST have tests
 - Test coverage MUST NOT decrease
@@ -291,7 +427,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 ---
 
-## 13. Project-Specific Conventions
+## 14. Project-Specific Conventions
 
 ### Entity Naming for Auto-Detection
 - Motion: `binary_sensor.*_motion` or `binary_sensor.pir_*`
@@ -319,7 +455,7 @@ from home_topology.modules.base import LocationModule
 
 ---
 
-## 14. When to Ask User vs Decide
+## 15. When to Ask User vs Decide
 
 ### Ask User When:
 - Breaking changes to API
@@ -336,7 +472,7 @@ from home_topology.modules.base import LocationModule
 
 ---
 
-## 15. Performance Guidelines
+## 16. Performance Guidelines
 
 - Synchronous EventBus is fine for <100 events/sec
 - Hierarchy queries are O(depth), acceptable for <10 levels
@@ -345,17 +481,19 @@ from home_topology.modules.base import LocationModule
 
 ---
 
-## 16. Summary: The Golden Rules
+## 17. Summary: The Golden Rules
 
 1. **ALWAYS read WORK-TRACKING.md first**
-2. **Log architectural decisions in ADR-LOG.md**
-3. **Update docs with code, not after**
-4. **Don't read docs you don't need**
-5. **Use grep/search before reading full files**
-6. **Test everything, maintain coverage**
-7. **Type hints + docstrings = mandatory**
-8. **No HA dependencies in core**
-9. **ALWAYS use 2025 for current dates (NOT 2024!)** ⚠️
+2. **NEVER create dated completion reports (2025.XX.XX-*.md)**
+3. **ALWAYS update CHANGELOG.md for user-facing changes**
+4. **Log architectural decisions in ADR-LOG.md**
+5. **Update docs with code, not after**
+6. **Don't read docs you don't need**
+7. **Use grep/search before reading full files**
+8. **Test everything, maintain coverage**
+9. **Type hints + docstrings = mandatory**
+10. **No HA dependencies in core**
+11. **ALWAYS use 2025 for current dates (NOT 2024!)** ⚠️
 
 ---
 
@@ -363,15 +501,15 @@ from home_topology.modules.base import LocationModule
 
 | Task | Read |
 |------|------|
-| Any task | WORK-TRACKING.md |
-| Kernel work | DESIGN.md |
+| Any task | docs/project-status.md |
+| Kernel work | docs/architecture.md |
 | Module work | docs/modules/{module}-design.md |
-| Big decision | ADR-LOG.md |
-| Question | docs/open-questions.md |
-| Code style | This file (don't read CODING-STANDARDS) |
+| Big decision | docs/adr-log.md |
+| Question | docs/decisions-pending.md |
+| Code style | This file (don't read docs/coding-standards.md) |
 
 ---
 
 **This file is your compass. Follow it, and you won't get lost in the docs.**
 
-Last Updated: 2025-11-24
+Last Updated: 2025-12-09

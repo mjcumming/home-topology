@@ -1,7 +1,5 @@
 """Tests for lighting presets."""
 
-import pytest
-
 from home_topology.modules.lighting import (
     lights_on_when_occupied,
     lights_off_when_vacant,
@@ -254,5 +252,3 @@ class TestAdaptiveLighting:
         assert len(lux_conditions) == 1
         assert lux_conditions[0].entity_id == "sensor.living_room_lux"
         assert lux_conditions[0].below == 75.0
-
-

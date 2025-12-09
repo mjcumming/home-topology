@@ -5,7 +5,7 @@ Each evaluator checks whether a specific condition type is met.
 """
 
 import logging
-from datetime import datetime, time
+from datetime import time
 from typing import TYPE_CHECKING, Optional
 
 from .models import (
@@ -242,5 +242,3 @@ def is_nighttime(
         return True
 
     return state == night_state
-
-

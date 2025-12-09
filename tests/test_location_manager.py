@@ -481,6 +481,381 @@ class TestLocationManagerComplexScenarios:
         logger.info("✓ Main floor children correct")
 
 
+class TestLocationManagerAliases:
+    """Test suite for location alias management."""
+
+    def test_create_location_with_aliases(self):
+        """Test creating a location with initial aliases."""
+        logger.info("=" * 80)
+        logger.info("TEST: Create location with aliases")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        logger.info("Creating location with aliases")
+
+        kitchen = mgr.create_location(
+            id="kitchen",
+            name="Kitchen",
+            aliases=["Cuisine", "Cooking Area", "Chef's Domain"],
+        )
+
+        logger.info(f"✓ Created location: {kitchen.name}")
+        logger.debug(f"  Aliases: {kitchen.aliases}")
+
+        assert len(kitchen.aliases) == 3
+        assert "Cuisine" in kitchen.aliases
+        assert "Cooking Area" in kitchen.aliases
+        assert "Chef's Domain" in kitchen.aliases
+        logger.info("✓ Aliases set correctly")
+
+    def test_add_single_alias(self):
+        """Test adding a single alias to a location."""
+        logger.info("=" * 80)
+        logger.info("TEST: Add single alias")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room")
+        logger.info("Created location: living_room")
+
+        logger.info("Adding alias: 'Lounge'")
+        mgr.add_alias("living_room", "Lounge")
+        logger.info("✓ Alias added")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Aliases: {location.aliases}")
+        assert "Lounge" in location.aliases
+        logger.info("✓ Alias successfully added")
+
+    def test_add_multiple_aliases(self):
+        """Test adding multiple aliases at once."""
+        logger.info("=" * 80)
+        logger.info("TEST: Add multiple aliases")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room")
+        logger.info("Created location: living_room")
+
+        aliases = ["Lounge", "TV Room", "Front Room"]
+        logger.info(f"Adding aliases: {aliases}")
+        mgr.add_aliases("living_room", aliases)
+        logger.info("✓ Aliases added")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Aliases: {location.aliases}")
+        assert len(location.aliases) == 3
+        for alias in aliases:
+            assert alias in location.aliases
+        logger.info("✓ All aliases successfully added")
+
+    def test_add_duplicate_alias(self):
+        """Test that duplicate aliases are ignored."""
+        logger.info("=" * 80)
+        logger.info("TEST: Add duplicate alias")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room")
+        logger.info("Created location: living_room")
+
+        logger.info("Adding alias: 'Lounge'")
+        mgr.add_alias("living_room", "Lounge")
+        logger.info("✓ First 'Lounge' added")
+
+        logger.info("Adding duplicate alias: 'Lounge'")
+        mgr.add_alias("living_room", "Lounge")
+        logger.info("✓ Duplicate ignored")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Aliases: {location.aliases}")
+        assert location.aliases.count("Lounge") == 1
+        logger.info("✓ Duplicate alias correctly ignored")
+
+    def test_remove_alias(self):
+        """Test removing an alias from a location."""
+        logger.info("=" * 80)
+        logger.info("TEST: Remove alias")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room", aliases=["Lounge", "TV Room"])
+        logger.info("Created location with aliases")
+
+        logger.info("Removing alias: 'Lounge'")
+        mgr.remove_alias("living_room", "Lounge")
+        logger.info("✓ Alias removed")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Remaining aliases: {location.aliases}")
+        assert "Lounge" not in location.aliases
+        assert "TV Room" in location.aliases
+        logger.info("✓ Alias successfully removed, others preserved")
+
+    def test_remove_nonexistent_alias(self):
+        """Test that removing non-existent alias is a no-op."""
+        logger.info("=" * 80)
+        logger.info("TEST: Remove non-existent alias")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room", aliases=["Lounge"])
+        logger.info("Created location with one alias")
+
+        logger.info("Removing non-existent alias: 'TV Room'")
+        mgr.remove_alias("living_room", "TV Room")
+        logger.info("✓ No error raised")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Aliases: {location.aliases}")
+        assert location.aliases == ["Lounge"]
+        logger.info("✓ Existing aliases unchanged")
+
+    def test_set_aliases(self):
+        """Test replacing all aliases at once."""
+        logger.info("=" * 80)
+        logger.info("TEST: Set (replace) aliases")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room", aliases=["Old1", "Old2"])
+        logger.info("Created location with old aliases")
+
+        new_aliases = ["New1", "New2", "New3"]
+        logger.info(f"Setting new aliases: {new_aliases}")
+        mgr.set_aliases("living_room", new_aliases)
+        logger.info("✓ Aliases replaced")
+
+        location = mgr.get_location("living_room")
+        logger.debug(f"Aliases: {location.aliases}")
+        assert location.aliases == new_aliases
+        assert "Old1" not in location.aliases
+        logger.info("✓ All aliases replaced successfully")
+
+    def test_find_by_alias(self):
+        """Test finding a location by alias."""
+        logger.info("=" * 80)
+        logger.info("TEST: Find location by alias")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room", aliases=["Lounge", "TV Room"])
+        mgr.create_location(id="kitchen", name="Kitchen", aliases=["Cuisine"])
+        logger.info("Created two locations with aliases")
+
+        logger.info("Finding location by alias: 'Lounge'")
+        location = mgr.find_by_alias("Lounge")
+        logger.info(f"Found: {location.name if location else 'None'}")
+        assert location is not None
+        assert location.id == "living_room"
+        logger.info("✓ Location found by alias")
+
+        logger.info("Finding location by alias: 'Cuisine'")
+        location = mgr.find_by_alias("Cuisine")
+        logger.info(f"Found: {location.name if location else 'None'}")
+        assert location is not None
+        assert location.id == "kitchen"
+        logger.info("✓ Location found by alias")
+
+        logger.info("Finding location by non-existent alias")
+        location = mgr.find_by_alias("NonExistent")
+        logger.info(f"Found: {location.name if location else 'None'}")
+        assert location is None
+        logger.info("✓ Returns None for non-existent alias")
+
+    def test_get_location_by_name(self):
+        """Test finding a location by name."""
+        logger.info("=" * 80)
+        logger.info("TEST: Get location by name")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="living_room", name="Living Room")
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created two locations")
+
+        logger.info("Finding location by name: 'Kitchen'")
+        location = mgr.get_location_by_name("Kitchen")
+        logger.info(f"Found: {location.name if location else 'None'}")
+        assert location is not None
+        assert location.id == "kitchen"
+        logger.info("✓ Location found by name")
+
+        logger.info("Finding location by non-existent name")
+        location = mgr.get_location_by_name("NonExistent")
+        logger.info(f"Found: {location.name if location else 'None'}")
+        assert location is None
+        logger.info("✓ Returns None for non-existent name")
+
+    def test_alias_invalid_location(self):
+        """Test that alias operations on invalid location raise error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Alias operations on invalid location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+
+        logger.info("Attempting to add alias to non-existent location")
+        try:
+            mgr.add_alias("nonexistent", "Alias")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+
+class TestLocationManagerBatchOperations:
+    """Test suite for batch entity operations."""
+
+    def test_add_entities_to_location(self):
+        """Test adding multiple entities at once."""
+        logger.info("=" * 80)
+        logger.info("TEST: Add multiple entities to location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location: kitchen")
+
+        entities = [
+            "light.kitchen_main",
+            "light.kitchen_under_cabinet",
+            "binary_sensor.kitchen_motion",
+        ]
+        logger.info(f"Adding {len(entities)} entities")
+        mgr.add_entities_to_location(entities, "kitchen")
+        logger.info("✓ Entities added")
+
+        kitchen = mgr.get_location("kitchen")
+        logger.debug(f"Kitchen entities: {kitchen.entity_ids}")
+        assert len(kitchen.entity_ids) == 3
+        for entity in entities:
+            assert entity in kitchen.entity_ids
+        logger.info("✓ All entities successfully added")
+
+    def test_remove_entities_from_location(self):
+        """Test removing multiple entities from their locations."""
+        logger.info("=" * 80)
+        logger.info("TEST: Remove multiple entities from location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        mgr.create_location(id="living_room", name="Living Room")
+        logger.info("Created two locations")
+
+        # Add entities to different locations
+        mgr.add_entity_to_location("light.kitchen_1", "kitchen")
+        mgr.add_entity_to_location("light.kitchen_2", "kitchen")
+        mgr.add_entity_to_location("light.living_1", "living_room")
+        logger.info("Added entities to locations")
+
+        # Remove multiple entities
+        entities_to_remove = ["light.kitchen_1", "light.living_1"]
+        logger.info(f"Removing entities: {entities_to_remove}")
+        mgr.remove_entities_from_location(entities_to_remove)
+        logger.info("✓ Entities removed")
+
+        # Verify removals
+        kitchen = mgr.get_location("kitchen")
+        living_room = mgr.get_location("living_room")
+        logger.debug(f"Kitchen entities: {kitchen.entity_ids}")
+        logger.debug(f"Living room entities: {living_room.entity_ids}")
+
+        assert "light.kitchen_1" not in kitchen.entity_ids
+        assert "light.kitchen_2" in kitchen.entity_ids  # Should still be there
+        assert "light.living_1" not in living_room.entity_ids
+        logger.info("✓ Entities successfully removed from their locations")
+
+    def test_remove_nonexistent_entity(self):
+        """Test that removing non-existent entity is a no-op."""
+        logger.info("=" * 80)
+        logger.info("TEST: Remove non-existent entity")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Removing non-existent entity")
+        mgr.remove_entities_from_location(["nonexistent.entity"])
+        logger.info("✓ No error raised")
+
+    def test_move_entities(self):
+        """Test moving multiple entities between locations."""
+        logger.info("=" * 80)
+        logger.info("TEST: Move multiple entities between locations")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        mgr.create_location(id="dining_room", name="Dining Room")
+        logger.info("Created two locations")
+
+        # Add entities to kitchen
+        entities = ["light.1", "light.2", "light.3"]
+        mgr.add_entities_to_location(entities, "kitchen")
+        logger.info(f"Added {len(entities)} entities to kitchen")
+
+        # Move two entities to dining room
+        entities_to_move = ["light.1", "light.2"]
+        logger.info(f"Moving {len(entities_to_move)} entities to dining_room")
+        mgr.move_entities(entities_to_move, "dining_room")
+        logger.info("✓ Entities moved")
+
+        # Verify
+        kitchen = mgr.get_location("kitchen")
+        dining_room = mgr.get_location("dining_room")
+        logger.debug(f"Kitchen entities: {kitchen.entity_ids}")
+        logger.debug(f"Dining room entities: {dining_room.entity_ids}")
+
+        assert "light.1" not in kitchen.entity_ids
+        assert "light.2" not in kitchen.entity_ids
+        assert "light.3" in kitchen.entity_ids  # Should still be there
+
+        assert "light.1" in dining_room.entity_ids
+        assert "light.2" in dining_room.entity_ids
+        logger.info("✓ Entities successfully moved")
+
+    def test_move_entities_to_invalid_location(self):
+        """Test that moving entities to invalid location raises error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Move entities to invalid location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+
+        logger.info("Attempting to move entities to non-existent location")
+        try:
+            mgr.move_entities(["light.1"], "nonexistent")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+    def test_batch_operations_empty_list(self):
+        """Test batch operations with empty lists."""
+        logger.info("=" * 80)
+        logger.info("TEST: Batch operations with empty lists")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Adding empty list of entities")
+        mgr.add_entities_to_location([], "kitchen")
+        logger.info("✓ No error raised")
+
+        logger.info("Removing empty list of entities")
+        mgr.remove_entities_from_location([])
+        logger.info("✓ No error raised")
+
+        logger.info("Moving empty list of entities")
+        mgr.move_entities([], "kitchen")
+        logger.info("✓ No error raised")
+
+
 if __name__ == "__main__":
     # Enable running tests directly
     pytest.main([__file__, "-v", "-s"])

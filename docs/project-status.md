@@ -23,13 +23,17 @@
 - [x] LocationModule protocol
 - [x] Event model with timestamp
 - [x] Error isolation (try/except per handler)
+- [x] Alias support (2025.12.09)
+- [x] Batch entity operations (2025.12.09)
 
 #### Documentation (100%)
-- [x] Architecture spec (v1.3) - 590 lines
+- [x] Architecture spec (v1.6) - Complete
 - [x] Coding standards - Complete
 - [x] Contributing guide - Complete
-- [x] Module design docs (occupancy, actions)
+- [x] Module design docs (occupancy, automation)
 - [x] Project overview
+- [x] Integration guide - Complete
+- [x] HA sync and services guide (2025.12.09)
 
 #### Development Infrastructure (100%)
 - [x] Makefile with dev commands
@@ -92,6 +96,16 @@
 - [x] `adaptive_lighting()` preset (time-based brightness)
 - [x] Tests (14 tests passing)
 
+#### Presence Module (100%) ✅ (New - 2025.12.09)
+- [x] Person data model
+- [x] Person registry (CRUD operations)
+- [x] Device tracker management (add/remove dynamically)
+- [x] Location queries (who's where, where is who)
+- [x] Person movement tracking
+- [x] `presence.changed` events
+- [x] State persistence (dump/restore)
+- [x] Tests (33 tests passing)
+
 #### Module Architecture (100%) ✅
 - [x] Layered architecture: domain modules use automation engine
 - [x] Backwards compatibility shim for `actions/` imports
@@ -147,28 +161,47 @@ Full list: See [decisions-pending.md](./decisions-pending.md)
 ## 📈 Progress Metrics
 
 ### Overall Project
-- **Completion**: ~65%
+- **Completion**: ~75%
 - **Architecture**: 100% ✅
 - **Core Kernel**: 100% ✅
 - **OccupancyModule**: 100% ✅
 - **AutomationEngine**: 100% ✅
 - **LightingModule**: 100% ✅
+- **PresenceModule**: 100% ✅
 - **HA Integration**: 0% ⚪
 
 ### Code Stats
-- **Total Lines**: ~9,000 (code + docs)
-- **Core Kernel**: ~600 lines
+- **Total Lines**: ~10,500 (code + docs)
+- **Core Kernel**: ~800 lines (with aliases, batch ops)
 - **OccupancyModule**: ~1,126 lines
 - **AutomationEngine**: ~1,200 lines
 - **LightingModule**: ~300 lines
-- **Tests**: ~4,500 lines (142 tests in modules)
-- **Documentation**: ~2,500 lines
+- **PresenceModule**: ~350 lines
+- **Tests**: ~5,500 lines (175 tests total)
+- **Documentation**: ~3,500 lines
 
 ### Test Coverage
-- **Core**: ~80% (basic tests exist)
+- **Core**: ~90% (32 tests with aliases and batch ops)
 - **Occupancy**: ~98% (88 tests, comprehensive suite)
 - **Automation**: ~95% (59 tests, comprehensive suite)
 - **Lighting**: ~95% (14 tests, comprehensive suite)
+- **Presence**: ~95% (33 tests, comprehensive suite)
+
+---
+
+## 🔮 Future Features (Designed, Not Implemented)
+
+### Integrity Validation
+**Target**: v0.3.0  
+**Status**: Designed (2025.12.09)  
+**Design Doc**: `docs/integration/integrity-validation.md`
+
+- Automatic topology validation
+- Broken reference detection (parent doesn't exist, circular refs)
+- Orphaned entity detection
+- HA repair system integration
+- Auto-repair capabilities
+- Services: `validate_integrity`, `auto_repair_topology`
 
 ---
 
@@ -207,6 +240,41 @@ Track major decisions here with date and rationale.
 - **Rationale**: More marketable, describes full system not just one component
 - **Approved By**: Discussion needed (see decisions-pending.md)
 - **Impact**: Low (name already established in 25+ files)
+
+### 2025.12.09
+
+#### Decision: Remove Confidence from Occupancy
+- **Context**: Occupancy initially had confidence scoring (0.0-1.0)
+- **Decision**: Binary only - occupied (True/False), no confidence
+- **Rationale**: No clear use case after years of experience - you either act or don't
+- **Approved By**: Mike
+- **Impact**: Medium (simplifies occupancy logic)
+- **See**: ADR-021 in adr-log.md
+
+#### Decision: No Event Coordination Between Modules
+- **Context**: Occupancy fires immediately, presence fires 2-5s later
+- **Decision**: Modules emit independently, no artificial delays or coordination
+- **Rationale**: 90% of automations don't need person ID, user can choose to wait
+- **Approved By**: Mike
+- **Impact**: High (affects module independence)
+- **See**: ADR-022 in adr-log.md
+- **Patterns**: Sequential override, optional wait, or ignore presence
+
+#### Decision: PresenceModule as Separate Module
+- **Context**: Need "who is where?" tracking in addition to "is occupied?"
+- **Decision**: Separate module with Person registry, independent from occupancy
+- **Rationale**: Different detection methods, different use cases, optional feature
+- **Approved By**: Mike
+- **Impact**: Medium (new module)
+- **See**: ADR-023 in adr-log.md
+
+#### Decision: Implement PresenceModule Now (v0.2.0)
+- **Context**: PresenceModule is simple, architectural clarity needed now
+- **Decision**: Build complete implementation immediately rather than wait for v0.4
+- **Rationale**: Not complex to implement, helps validate architecture early
+- **Approved By**: Mike
+- **Impact**: Low (accelerated timeline)
+- **Status**: Complete (33 tests passing)
 
 ### 2025-11-26
 

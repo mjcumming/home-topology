@@ -264,7 +264,9 @@ class AutomationEngine:
             for action in rule.actions:
                 if isinstance(action, ServiceCallAction):
                     self._execute_service_call(action, location_id)
-                    actions_executed.append({"service": action.service, "entity_id": action.entity_id})
+                    actions_executed.append(
+                        {"service": action.service, "entity_id": action.entity_id}
+                    )
 
                 elif isinstance(action, DelayAction):
                     # Note: In a real implementation, delays would be handled
@@ -330,7 +332,9 @@ class AutomationEngine:
         trust_state = self._trust_state.get(location_id, True)
         if trust_state and action.entity_id:
             if self._should_skip_action(action):
-                logger.debug(f"Skipping {action.service} for {action.entity_id} (already in desired state)")
+                logger.debug(
+                    f"Skipping {action.service} for {action.entity_id} (already in desired state)"
+                )
                 return True
 
         # Execute service call
@@ -487,5 +491,3 @@ class AutomationEngine:
 
 # Backwards compatibility alias
 ActionsEngine = AutomationEngine
-
-

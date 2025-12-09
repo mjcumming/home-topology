@@ -10,8 +10,6 @@ Domain-specific presets live in their respective modules:
 - media/ - (future) media control, etc.
 """
 
-from typing import Optional
-
 from .models import (
     AutomationRule,
     EventTriggerConfig,
@@ -173,5 +171,3 @@ def media_off_when_vacant(
         actions=actions,
         mode=ExecutionMode.RESTART,
     )
-
-

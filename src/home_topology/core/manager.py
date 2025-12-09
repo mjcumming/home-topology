@@ -37,6 +37,7 @@ class LocationManager:
         parent_id: Optional[str] = None,
         is_explicit_root: bool = False,
         ha_area_id: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
     ) -> Location:
         """
         Create a new location in the topology.
@@ -50,6 +51,7 @@ class LocationManager:
                 - is_explicit_root=True: Shows as root in hierarchy
                 - is_explicit_root=False: Shows in Inbox (unassigned)
             ha_area_id: Optional Home Assistant area ID
+            aliases: Alternative names for this location (for voice assistants)
 
         Returns:
             The created Location
@@ -69,6 +71,7 @@ class LocationManager:
             parent_id=parent_id,
             is_explicit_root=is_explicit_root,
             ha_area_id=ha_area_id,
+            aliases=aliases or [],
         )
 
         self._locations[id] = location
@@ -301,3 +304,174 @@ class LocationManager:
             return None
 
         return location.modules.get(module_id)
+
+    # Alias Management Methods
+
+    def add_alias(self, location_id: str, alias: str) -> None:
+        """
+        Add a single alias to a location.
+
+        Duplicate aliases are ignored.
+
+        Args:
+            location_id: The location ID
+            alias: The alias to add
+
+        Raises:
+            ValueError: If location doesn't exist
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        if alias and alias not in location.aliases:
+            location.aliases.append(alias)
+            logger.debug(f"Added alias '{alias}' to location '{location_id}'")
+
+    def add_aliases(self, location_id: str, aliases: List[str]) -> None:
+        """
+        Add multiple aliases to a location.
+
+        Duplicate aliases are ignored.
+
+        Args:
+            location_id: The location ID
+            aliases: List of aliases to add
+
+        Raises:
+            ValueError: If location doesn't exist
+        """
+        for alias in aliases:
+            self.add_alias(location_id, alias)
+
+    def remove_alias(self, location_id: str, alias: str) -> None:
+        """
+        Remove an alias from a location.
+
+        If the alias doesn't exist, this is a no-op.
+
+        Args:
+            location_id: The location ID
+            alias: The alias to remove
+
+        Raises:
+            ValueError: If location doesn't exist
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        if alias in location.aliases:
+            location.aliases.remove(alias)
+            logger.debug(f"Removed alias '{alias}' from location '{location_id}'")
+
+    def set_aliases(self, location_id: str, aliases: List[str]) -> None:
+        """
+        Replace all aliases for a location.
+
+        Args:
+            location_id: The location ID
+            aliases: New list of aliases (replaces existing)
+
+        Raises:
+            ValueError: If location doesn't exist
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        location.aliases = aliases.copy()
+        logger.debug(f"Set aliases for location '{location_id}': {aliases}")
+
+    def find_by_alias(self, alias: str) -> Optional[Location]:
+        """
+        Find a location by alias.
+
+        Args:
+            alias: The alias to search for
+
+        Returns:
+            First matching Location or None if not found
+        """
+        for location in self._locations.values():
+            if alias in location.aliases:
+                return location
+        return None
+
+    def get_location_by_name(self, name: str) -> Optional[Location]:
+        """
+        Find a location by name (exact match, case-sensitive).
+
+        Args:
+            name: The location name to search for
+
+        Returns:
+            First matching Location or None if not found
+        """
+        for location in self._locations.values():
+            if location.name == name:
+                return location
+        return None
+
+    # Batch Entity Operations
+
+    def add_entities_to_location(self, entity_ids: List[str], location_id: str) -> None:
+        """
+        Map multiple entities to a location.
+
+        This is equivalent to calling add_entity_to_location for each entity,
+        but more efficient.
+
+        Args:
+            entity_ids: List of entity IDs to add
+            location_id: The location ID
+
+        Raises:
+            ValueError: If location doesn't exist
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        for entity_id in entity_ids:
+            self.add_entity_to_location(entity_id, location_id)
+
+    def remove_entities_from_location(self, entity_ids: List[str]) -> None:
+        """
+        Remove multiple entities from their current locations.
+
+        For each entity, removes it from whichever location it's currently in.
+        If an entity isn't mapped to any location, this is a no-op for that entity.
+
+        Args:
+            entity_ids: List of entity IDs to remove
+        """
+        for entity_id in entity_ids:
+            location_id = self._entity_to_location.get(entity_id)
+            if location_id:
+                location = self.get_location(location_id)
+                if location and entity_id in location.entity_ids:
+                    location.entity_ids.remove(entity_id)
+                del self._entity_to_location[entity_id]
+                logger.debug(f"Removed entity {entity_id} from location {location_id}")
+
+    def move_entities(self, entity_ids: List[str], to_location_id: str) -> None:
+        """
+        Move multiple entities from their current locations to a new location.
+
+        This is equivalent to calling add_entity_to_location for each entity
+        (which automatically removes from old location).
+
+        Args:
+            entity_ids: List of entity IDs to move
+            to_location_id: Destination location ID
+
+        Raises:
+            ValueError: If destination location doesn't exist
+        """
+        to_location = self.get_location(to_location_id)
+        if not to_location:
+            raise ValueError(f"Location '{to_location_id}' does not exist")
+
+        for entity_id in entity_ids:
+            self.add_entity_to_location(entity_id, to_location_id)

@@ -483,5 +483,3 @@ class LocationAutomationConfig:
 ActionRule = AutomationRule
 ActionExecution = RuleExecution
 LocationActionsConfig = LocationAutomationConfig
-
-

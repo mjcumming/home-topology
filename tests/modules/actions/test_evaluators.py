@@ -264,4 +264,3 @@ class TestHelperFunctions:
         """Test is_nighttime defaults to True when entity missing."""
         # No sun entity set - should default to True (safe for lighting)
         assert is_nighttime(platform) is True
-

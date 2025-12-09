@@ -1,6 +1,5 @@
 """Tests for automation models."""
 
-import pytest
 from datetime import time
 
 from home_topology.modules.automation import (
@@ -10,9 +9,7 @@ from home_topology.modules.automation import (
     TimeTriggerConfig,
     TimeOfDayCondition,
     StateCondition,
-    NumericStateCondition,
     LuxLevelCondition,
-    LocationOccupiedCondition,
     DayOfWeekCondition,
     ServiceCallAction,
     DelayAction,
@@ -144,6 +141,7 @@ class TestTriggerConfigs:
         )
 
         from home_topology.modules.automation import TriggerType
+
         assert trigger.trigger_type == TriggerType.EVENT
 
     def test_state_trigger(self):
@@ -156,6 +154,7 @@ class TestTriggerConfigs:
         )
 
         from home_topology.modules.automation import TriggerType
+
         assert trigger.trigger_type == TriggerType.STATE
 
     def test_time_trigger(self):
@@ -163,6 +162,7 @@ class TestTriggerConfigs:
         trigger = TimeTriggerConfig(at=time(7, 0, 0))
 
         from home_topology.modules.automation import TriggerType
+
         assert trigger.trigger_type == TriggerType.TIME
 
 
@@ -174,6 +174,7 @@ class TestConditionConfigs:
         condition = TimeOfDayCondition(after="08:00:00", before="18:00:00")
 
         from home_topology.modules.automation import ConditionType
+
         assert condition.condition_type == ConditionType.TIME_OF_DAY
 
     def test_lux_level_condition(self):
@@ -181,6 +182,7 @@ class TestConditionConfigs:
         condition = LuxLevelCondition(entity_id="sensor.lux", below=50.0)
 
         from home_topology.modules.automation import ConditionType
+
         assert condition.condition_type == ConditionType.LUX_LEVEL
 
     def test_day_of_week_condition(self):
@@ -188,6 +190,7 @@ class TestConditionConfigs:
         condition = DayOfWeekCondition(days=frozenset({"mon", "tue", "wed", "thu", "fri"}))
 
         from home_topology.modules.automation import ConditionType
+
         assert condition.condition_type == ConditionType.DAY_OF_WEEK
 
 
@@ -239,5 +242,3 @@ class TestLocationAutomationConfig:
 
         assert config.trust_device_state is False
         assert len(config.rules) == 1
-
-

@@ -344,8 +344,10 @@ def adaptive_lighting(
     )
 
     # Turn off when vacant
-    rules.append(lights_off_when_vacant(f"{rule_id_prefix}_off", light_entity, delay_seconds=turn_off_delay, enabled=enabled))
+    rules.append(
+        lights_off_when_vacant(
+            f"{rule_id_prefix}_off", light_entity, delay_seconds=turn_off_delay, enabled=enabled
+        )
+    )
 
     return rules
-
-

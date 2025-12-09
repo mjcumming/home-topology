@@ -191,7 +191,9 @@ class TestConditions:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[TimeOfDayCondition(after="08:00:00", before="18:00:00")],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -207,7 +209,9 @@ class TestConditions:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[TimeOfDayCondition(after="08:00:00", before="18:00:00")],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -233,7 +237,9 @@ class TestExecutionModes:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[
                 ServiceCallAction(service="light.turn_on", entity_id="light.test"),
@@ -260,7 +266,9 @@ class TestExecutionModes:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[
                 DelayAction(seconds=60),
@@ -289,7 +297,9 @@ class TestDeviceStateCheck:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -309,7 +319,9 @@ class TestDeviceStateCheck:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -329,7 +341,9 @@ class TestHistory:
         rule = AutomationRule(
             id="test_rule",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -349,7 +363,9 @@ class TestHistory:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -372,7 +388,9 @@ class TestStateExport:
         rule = AutomationRule(
             id="test",
             enabled=True,
-            trigger=EventTriggerConfig(event_type="occupancy.changed", payload_match={"occupied": True}),
+            trigger=EventTriggerConfig(
+                event_type="occupancy.changed", payload_match={"occupied": True}
+            ),
             conditions=[],
             actions=[ServiceCallAction(service="light.turn_on", entity_id="light.test")],
         )
@@ -410,4 +428,3 @@ class TestStateExport:
         history = engine.get_history()
         assert len(history) == 1
         assert history[0].rule_id == "test"
-

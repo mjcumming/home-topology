@@ -387,5 +387,3 @@ class AutomationModule(LocationModule):
 
 # Backwards compatibility alias
 ActionsModule = AutomationModule
-
-

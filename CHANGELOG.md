@@ -9,9 +9,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Core Library Enhancements (2025.12.09)
+- **Alias support**: `Location` dataclass now has `aliases: List[str]` field for voice assistant integration
+- **Alias management methods** in `LocationManager`:
+  - `add_alias(location_id, alias)` - Add single alias
+  - `add_aliases(location_id, aliases)` - Add multiple aliases
+  - `remove_alias(location_id, alias)` - Remove specific alias
+  - `set_aliases(location_id, aliases)` - Replace all aliases
+  - `find_by_alias(alias)` - Find location by alias
+  - `get_location_by_name(name)` - Find location by exact name
+- **Batch entity operations** in `LocationManager`:
+  - `add_entities_to_location(entity_ids, location_id)` - Add multiple entities at once
+  - `remove_entities_from_location(entity_ids)` - Remove multiple entities
+  - `move_entities(entity_ids, to_location_id)` - Move entities between locations
+
+#### PresenceModule (2025.12.09)
+- **NEW MODULE**: PresenceModule for tracking WHO is in each location
+- **Person data model**: `Person` dataclass with device trackers and current location
+- **Person registry**: Create, delete, query people
+- **Device tracker management**: Add/remove trackers dynamically (supports temporary associations)
+- **Location queries**: `get_people_in_location()`, `get_person_location()`
+- **Person movement**: `move_person()` with `presence.changed` events
+- **State persistence**: Full dump/restore support
+- **Tests**: 33 comprehensive tests (all passing)
+- **Example**: `examples/presence-example.py` demonstrating usage
+
 ### Changed
 - **Python 3.12+ required**: Bumped minimum Python version to 3.12 to align with Home Assistant requirements
 - Use `datetime.UTC` instead of `datetime.timezone.utc` throughout codebase
+- Updated `LocationManager.create_location()` to accept optional `aliases` parameter
+
+### Removed
+- **Confidence scoring**: Removed from occupancy design (never implemented)
+  - Occupancy is binary (True/False) only
+  - Based on years of real-world experience showing no value
+  - Simpler implementation and configuration
+
+### Documentation
+
+#### New Documents
+- `docs/integration/ha-sync-services.md` (812 lines) - Complete HA sync and service guide
+- `docs/integration/integrity-validation.md` (676 lines) - Validation system design (future v0.3)
+- `docs/modules/presence-module-design.md` (784 lines) - Complete PresenceModule spec
+- `docs/modules/occupancy-presence-interaction.md` (450 lines) - How modules work together
+
+#### Updated Documents
+- `docs/architecture.md` → v1.7 with alias support, batch operations, PresenceModule
+- `docs/adr-log.md` → Added ADR-020 (Aliases), ADR-021 (No Confidence), ADR-022 (No Event Coordination), ADR-023 (PresenceModule)
+- `docs/decisions-pending.md` → Added decisions 18-22
+- `docs/project-status.md` → Updated with PresenceModule completion, 75% overall progress
+
+#### Architecture Decisions
+- **ADR-020**: Alias support and batch operations in core library
+- **ADR-021**: Remove confidence scoring from occupancy (binary only)
+- **ADR-022**: No event coordination between modules (independent emission)
+- **ADR-023**: PresenceModule as separate module from OccupancyModule
 
 ---
 
