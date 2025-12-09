@@ -570,6 +570,9 @@ The `home-topology` kernel ships with these modules:
 - **PresenceModule** - Track WHO is in each location (person tracking with device trackers)  
   See [docs/modules/presence-module-design.md](./modules/presence-module-design.md)
 
+- **AmbientLightModule** - Intelligent ambient light detection with hierarchical sensor lookup  
+  See [docs/modules/ambient-module-design.md](./modules/ambient-module-design.md)
+
 **Future Modules**:
 - **ComfortModule** - Temperature, humidity, air quality per location
 - **EnergyModule** - Power, energy consumption per location
@@ -918,6 +921,7 @@ Host platform (HA) could manage multiple kernel instances.
 - **v1.5**: Updated feedback loop prevention to reflect integration-driven classification (dropped primary/secondary signals)
 - **v1.6**: Added alias support and batch entity operations (2025.12.09)
 - **v1.7**: Clarified occupancy is binary (no confidence), added PresenceModule design, documented no event coordination pattern (2025.12.09)
+- **v1.8**: Added AmbientLightModule with hierarchical sensor lookup (2025.12.09)
 
 ---
 

@@ -10,7 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- TBD
+
+#### AmbientLightModule (2025.12.09)
+- **NEW MODULE**: AmbientLightModule for intelligent ambient light detection
+- **Hierarchical sensor lookup**: Automatically inherit lux sensors from parent locations
+  - Check location → parent → grandparent → sun.sun
+  - Full provenance tracking (know which sensor provided reading)
+- **Automatic sensor discovery**: Detects lux sensors by pattern, device_class, and unit
+- **Location-based conditions**: `LuxLevelCondition` now supports `location_id` parameter
+  - Backward compatible: `entity_id` still works
+  - New mode: `location_id="kitchen"` with automatic sensor lookup and inheritance
+- **Per-location thresholds**: Configure `dark_threshold` and `bright_threshold` per location
+- **Multiple fallback strategies**: lux sensor → parent lux → sun.sun → assume dark/bright
+- **Convenience methods**: `is_dark(location_id)`, `is_bright(location_id)`
+- **Data model**: `AmbientLightReading` with lux value, source tracking, and boolean flags
+- **Configuration schema**: Full JSON schema for UI generation
+- **State persistence**: Sensor cache and configuration persistence
+- **Comprehensive tests**: 60+ tests covering all scenarios
+- **Lighting preset updates**: `lights_on_when_occupied()` and `adaptive_lighting()` now support `location_id`
+
+#### Automation Engine Updates (2025.12.09)
+- **Enhanced LuxLevelCondition**: Two modes of operation
+  - Explicit sensor: `LuxLevelCondition(entity_id="sensor.kitchen_lux", below=50)`
+  - Location-based: `LuxLevelCondition(location_id="kitchen", inherit_from_parent=True, below=50)`
+- **ConditionEvaluator** now accepts optional `ambient_module` parameter
+- **Integration ready**: HA integration can pass AmbientLightModule to automation engine
+
+### Documentation
+
+#### New Documents
+- `docs/modules/ambient-module-design.md` (900+ lines) - Complete AmbientLightModule specification
+
+#### Updated Documents
+- `docs/adr-log.md` → Added ADR-024 (Hierarchical Ambient Light Sensor Lookup)
+- `docs/architecture.md` → Added AmbientLightModule to built-in modules list
+
+#### Architecture Decisions
+- **ADR-024**: Hierarchical Ambient Light Sensor Lookup (automatic inheritance from parent locations)
 
 ---
 

@@ -699,6 +699,91 @@ ActionsModule:
 
 ---
 
+### ADR-024: Hierarchical Ambient Light Sensor Lookup (2025.12.09)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Lighting automations need ambient light levels ("is it dark?")
+- Options: sunrise/sunset times vs lux sensors
+- Not every room has a lux sensor
+- Lux sensors are more accurate than sun position (handles clouds, indoor spaces)
+- Users want minimal configuration
+
+**Decision**:
+Implement `AmbientLightModule` with **hierarchical sensor lookup**:
+1. Check location for lux sensor
+2. If not found, walk up parent hierarchy
+3. Fall back to sun.sun if no sensors found
+4. Return `AmbientLightReading` with full provenance (where reading came from)
+
+**Architecture**:
+```python
+AmbientLightModule:
+  - Answers: "How bright is it here?"
+  - Hierarchical lookup: room → floor → house → sun
+  - Auto-discovery: Detect lux sensors by pattern/device_class
+  - Per-location thresholds: Different dark/bright values
+  - Integration: LuxLevelCondition supports location_id
+```
+
+**Example**:
+```python
+# House has outdoor sensor
+house → sensor.outdoor_lux (1000 lux)
+
+# Kitchen has local sensor (preferred)
+kitchen → sensor.kitchen_lux (200 lux)
+
+# Living room has no sensor (inherits from house)
+living_room → inherits sensor.outdoor_lux (1000 lux)
+
+# Bathroom has no sensor, house sensor unavailable (uses sun)
+bathroom → fallback to sun.sun
+```
+
+**Consequences**:
+- ✅ Minimal configuration (one sensor per floor works)
+- ✅ Intelligent defaults (automatic inheritance)
+- ✅ Always has a reading (graceful fallback)
+- ✅ Full provenance tracking (know where reading came from)
+- ✅ User override (can specify per-location sensors)
+- ✅ Backward compatible (entity_id still works)
+- ⚠️ Inherited values may be less accurate for interior rooms
+
+**Integration Benefits**:
+- `LuxLevelCondition` accepts either `entity_id` or `location_id`
+- Lighting presets can use `location_id="kitchen"` instead of `lux_sensor="sensor.kitchen_lux"`
+- HA integration auto-discovers sensors from device_class="illuminance"
+
+**Alternatives Considered**:
+1. **Sun-only approach**: Rejected - inaccurate for cloudy days and indoor spaces
+2. **Require sensor per location**: Rejected - too much configuration, unrealistic sensor coverage
+3. **Nearest-neighbor lookup**: Rejected - parent hierarchy is clearer and more predictable
+4. **Average multiple sensors**: Rejected - complexity not worth benefit for v1
+
+**Fallback Strategy**:
+- Lux sensor (local) → Lux sensor (parent) → sun.sun → assume dark (configurable)
+- Each step documented in `AmbientLightReading.fallback_method`
+
+**Data Model**:
+```python
+@dataclass
+class AmbientLightReading:
+    lux: Optional[float]              # Actual value or None
+    source_sensor: Optional[str]      # Which sensor
+    source_location: Optional[str]    # Which location owns sensor
+    is_inherited: bool                # From parent?
+    is_dark: bool                     # Convenience flag
+    is_bright: bool                   # Convenience flag
+    dark_threshold: float             # Used for boolean
+    bright_threshold: float           # Used for boolean
+    fallback_method: Optional[str]    # How determined if no sensor
+    timestamp: datetime               # When reading taken
+```
+
+---
+
 ## Rejected Decisions
 
 ### REJECTED: Adapter Layer for Occupancy
