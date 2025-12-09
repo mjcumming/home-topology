@@ -40,6 +40,7 @@ def lights_on_when_occupied(
     brightness_pct: int = 100,
     only_when_dark: bool = True,
     lux_sensor: Optional[str] = None,
+    location_id: Optional[str] = None,
     lux_threshold: float = 50.0,
     dark_entity: str = DEFAULT_DARK_ENTITY,
     dark_state: str = DEFAULT_DARK_STATE,
@@ -53,7 +54,8 @@ def lights_on_when_occupied(
         light_entity: Light entity ID (e.g., "light.kitchen_ceiling")
         brightness_pct: Brightness level (0-100)
         only_when_dark: Only turn on when dark (uses dark_entity or lux_sensor)
-        lux_sensor: Optional lux sensor for light-level based triggering
+        lux_sensor: Optional explicit lux sensor entity ID
+        location_id: Optional location ID for automatic sensor lookup
         lux_threshold: Lux level below which to turn on lights
         dark_entity: Entity to check for darkness (default: sun.sun)
         dark_state: State indicating dark (default: below_horizon)
@@ -63,7 +65,15 @@ def lights_on_when_occupied(
         Configured AutomationRule
 
     Example:
-        # With lux sensor (most accurate)
+        # With location (automatic sensor lookup)
+        rule = lights_on_when_occupied(
+            "kitchen_lights_on",
+            "light.kitchen_ceiling",
+            brightness_pct=80,
+            location_id="kitchen",  # Automatically finds sensor
+        )
+
+        # With explicit lux sensor (backward compatible)
         rule = lights_on_when_occupied(
             "kitchen_lights_on",
             "light.kitchen_ceiling",
@@ -89,10 +99,17 @@ def lights_on_when_occupied(
     conditions = []
 
     if lux_sensor:
-        # Use lux sensor for light level (most accurate)
+        # Explicit lux sensor (backward compatible)
         conditions.append(LuxLevelCondition(entity_id=lux_sensor, below=lux_threshold))
+    elif location_id:
+        # Location-based with automatic sensor lookup (NEW)
+        conditions.append(LuxLevelCondition(
+            location_id=location_id,
+            inherit_from_parent=True,
+            below=lux_threshold
+        ))
     elif only_when_dark:
-        # Use entity state for darkness check
+        # Use entity state for darkness check (fallback)
         conditions.append(StateCondition(entity_id=dark_entity, state=dark_state))
 
     actions = [
@@ -230,6 +247,7 @@ def adaptive_lighting(
     evening_start: str = "18:00:00",
     night_start: str = "22:00:00",
     lux_sensor: Optional[str] = None,
+    location_id: Optional[str] = None,
     lux_threshold: float = 50.0,
     turn_off_delay: int = 30,
     enabled: bool = True,
@@ -280,6 +298,12 @@ def adaptive_lighting(
     day_conditions = [TimeOfDayCondition(after=day_start, before=evening_start)]
     if lux_sensor:
         day_conditions.append(LuxLevelCondition(entity_id=lux_sensor, below=lux_threshold))
+    elif location_id:
+        day_conditions.append(LuxLevelCondition(
+            location_id=location_id,
+            inherit_from_parent=True,
+            below=lux_threshold
+        ))
 
     rules.append(
         AutomationRule(
