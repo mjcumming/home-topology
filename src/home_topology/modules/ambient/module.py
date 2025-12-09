@@ -143,8 +143,7 @@ class AmbientLightModule(LocationModule):
             "version": 1,
             "sensor_cache": self._sensor_cache,
             "last_readings": {
-                loc_id: reading.to_dict()
-                for loc_id, reading in self._last_readings.items()
+                loc_id: reading.to_dict() for loc_id, reading in self._last_readings.items()
             },
         }
 
@@ -167,7 +166,7 @@ class AmbientLightModule(LocationModule):
         location_id: str,
         dark_threshold: Optional[float] = None,
         bright_threshold: Optional[float] = None,
-        inherit: bool = True
+        inherit: bool = True,
     ) -> AmbientLightReading:
         """
         Get ambient light reading for a location.
@@ -200,7 +199,7 @@ class AmbientLightModule(LocationModule):
                     is_bright=lux > bright_thresh,
                     dark_threshold=dark_thresh,
                     bright_threshold=bright_thresh,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
                 )
                 self._last_readings[location_id] = reading
                 return reading
@@ -222,7 +221,7 @@ class AmbientLightModule(LocationModule):
                             is_bright=lux > bright_thresh,
                             dark_threshold=dark_thresh,
                             bright_threshold=bright_thresh,
-                            timestamp=datetime.now()
+                            timestamp=datetime.now(),
                         )
                         self._last_readings[location_id] = reading
                         return reading
@@ -236,11 +235,7 @@ class AmbientLightModule(LocationModule):
         self._last_readings[location_id] = reading
         return reading
 
-    def is_dark(
-        self,
-        location_id: str,
-        threshold: Optional[float] = None
-    ) -> bool:
+    def is_dark(self, location_id: str, threshold: Optional[float] = None) -> bool:
         """
         Check if location is dark (convenience wrapper).
 
@@ -254,11 +249,7 @@ class AmbientLightModule(LocationModule):
         reading = self.get_ambient_light(location_id, dark_threshold=threshold)
         return reading.is_dark
 
-    def is_bright(
-        self,
-        location_id: str,
-        threshold: Optional[float] = None
-    ) -> bool:
+    def is_bright(self, location_id: str, threshold: Optional[float] = None) -> bool:
         """
         Check if location is bright.
 
@@ -276,11 +267,7 @@ class AmbientLightModule(LocationModule):
     # Public API - Sensor Configuration
     # =============================================================================
 
-    def set_lux_sensor(
-        self,
-        location_id: str,
-        entity_id: str
-    ) -> None:
+    def set_lux_sensor(self, location_id: str, entity_id: str) -> None:
         """
         Set the lux sensor for a location.
 
@@ -291,21 +278,13 @@ class AmbientLightModule(LocationModule):
         config = self._get_location_config(location_id)
         config.lux_sensor = entity_id
 
-        self._location_manager.set_module_config(
-            location_id,
-            self.id,
-            config.to_dict()
-        )
+        self._location_manager.set_module_config(location_id, self.id, config.to_dict())
 
         # Update cache
         self._sensor_cache[location_id] = entity_id
         logger.info(f"Set lux sensor for {location_id}: {entity_id}")
 
-    def get_lux_sensor(
-        self,
-        location_id: str,
-        inherit: bool = True
-    ) -> Optional[str]:
+    def get_lux_sensor(self, location_id: str, inherit: bool = True) -> Optional[str]:
         """
         Get the effective lux sensor for a location.
 
@@ -353,11 +332,7 @@ class AmbientLightModule(LocationModule):
                     discovered[location.id] = entity_id
                     # Update config
                     config.lux_sensor = entity_id
-                    self._location_manager.set_module_config(
-                        location.id,
-                        self.id,
-                        config.to_dict()
-                    )
+                    self._location_manager.set_module_config(location.id, self.id, config.to_dict())
                     logger.info(f"Auto-discovered lux sensor: {location.id} → {entity_id}")
                     break
 
@@ -404,12 +379,13 @@ class AmbientLightModule(LocationModule):
         """
         if not self._platform:
             # Fallback to pattern matching if no platform adapter
-            return any(pattern in entity_id.lower()
-                      for pattern in ["lux", "illuminance", "light_level", "brightness"])
+            return any(
+                pattern in entity_id.lower()
+                for pattern in ["lux", "illuminance", "light_level", "brightness"]
+            )
 
         # Check entity ID pattern
-        if any(pattern in entity_id.lower()
-               for pattern in ["lux", "illuminance", "light_level"]):
+        if any(pattern in entity_id.lower() for pattern in ["lux", "illuminance", "light_level"]):
             return True
 
         # Check device class
@@ -449,9 +425,7 @@ class AmbientLightModule(LocationModule):
     # =============================================================================
 
     def _get_sun_fallback(
-        self,
-        dark_threshold: float,
-        bright_threshold: float
+        self, dark_threshold: float, bright_threshold: float
     ) -> AmbientLightReading:
         """Get ambient light reading from sun position."""
         if not self._platform:
@@ -466,7 +440,7 @@ class AmbientLightModule(LocationModule):
                 dark_threshold=dark_threshold,
                 bright_threshold=bright_threshold,
                 fallback_method="no_platform",
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
 
         sun_state = self._platform.get_state("sun.sun")
@@ -486,14 +460,11 @@ class AmbientLightModule(LocationModule):
             dark_threshold=dark_threshold,
             bright_threshold=bright_threshold,
             fallback_method="sun_position",
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
 
     def _get_error_fallback(
-        self,
-        config: AmbientLightConfig,
-        dark_threshold: float,
-        bright_threshold: float
+        self, config: AmbientLightConfig, dark_threshold: float, bright_threshold: float
     ) -> AmbientLightReading:
         """Get fallback reading when sensor unavailable and sun fallback disabled."""
         assume_dark = config.assume_dark_on_error
@@ -508,6 +479,5 @@ class AmbientLightModule(LocationModule):
             dark_threshold=dark_threshold,
             bright_threshold=bright_threshold,
             fallback_method="assume_dark" if assume_dark else "assume_bright",
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
-
