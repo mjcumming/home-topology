@@ -475,3 +475,159 @@ class LocationManager:
 
         for entity_id in entity_ids:
             self.add_entity_to_location(entity_id, to_location_id)
+
+    def update_location(
+        self,
+        location_id: str,
+        name: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        is_explicit_root: Optional[bool] = None,
+        ha_area_id: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+    ) -> Location:
+        """
+        Update a location's properties.
+
+        Args:
+            location_id: Location ID to update
+            name: New name (None to keep current)
+            parent_id: New parent ID (None to keep current, use empty string to clear)
+            is_explicit_root: New explicit root flag (None to keep current)
+            ha_area_id: New HA area ID (None to keep current, use empty string to clear)
+            aliases: New aliases list (None to keep current)
+
+        Returns:
+            The updated Location
+
+        Raises:
+            ValueError: If location doesn't exist
+            ValueError: If new parent doesn't exist
+            ValueError: If reparenting would create a cycle
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        # Update name
+        if name is not None:
+            location.name = name
+            logger.debug(f"Updated name for {location_id}: {name}")
+
+        # Update parent
+        if parent_id is not None:
+            # Empty string means clear parent
+            if parent_id == "":
+                parent_id = None
+
+            # Validate new parent exists (if provided)
+            if parent_id and parent_id not in self._locations:
+                raise ValueError(f"Parent location '{parent_id}' does not exist")
+
+            # Check for cycles (new parent is a descendant)
+            if parent_id:
+                if parent_id == location_id:
+                    raise ValueError(f"Location cannot be its own parent")
+                descendants = self.descendants_of(location_id)
+                if any(d.id == parent_id for d in descendants):
+                    raise ValueError(
+                        f"Cannot set parent '{parent_id}': would create cycle "
+                        f"(location is ancestor of new parent)"
+                    )
+
+            location.parent_id = parent_id
+            logger.debug(f"Updated parent for {location_id}: {parent_id}")
+
+        # Update explicit root flag
+        if is_explicit_root is not None:
+            location.is_explicit_root = is_explicit_root
+            logger.debug(f"Updated is_explicit_root for {location_id}: {is_explicit_root}")
+
+        # Update HA area ID
+        if ha_area_id is not None:
+            # Empty string means clear
+            location.ha_area_id = ha_area_id if ha_area_id != "" else None
+            logger.debug(f"Updated ha_area_id for {location_id}: {location.ha_area_id}")
+
+        # Update aliases
+        if aliases is not None:
+            location.aliases = aliases.copy()
+            logger.debug(f"Updated aliases for {location_id}: {aliases}")
+
+        logger.info(f"Updated location: {location_id}")
+        return location
+
+    def delete_location(
+        self,
+        location_id: str,
+        cascade: bool = False,
+        orphan_children: bool = False,
+    ) -> List[str]:
+        """
+        Delete a location from the topology.
+
+        Args:
+            location_id: Location ID to delete
+            cascade: If True, delete all descendants first (recursive)
+            orphan_children: If True, move direct children to Inbox (unassigned)
+                Ignored if cascade=True
+
+        Returns:
+            List of deleted location IDs (for cascade mode)
+
+        Raises:
+            ValueError: If location doesn't exist
+            ValueError: If location has children and neither cascade nor orphan_children is True
+        """
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        deleted_ids = []
+        children = self.children_of(location_id)
+
+        # Handle children
+        if children:
+            if cascade:
+                # Delete all descendants first (bottom-up)
+                descendants = self.descendants_of(location_id)
+                for desc in reversed(descendants):  # Children before parents
+                    deleted_ids.extend(self._delete_location_internal(desc.id))
+            elif orphan_children:
+                # Move children to Inbox
+                for child in children:
+                    child.parent_id = None
+                    child.is_explicit_root = False
+                    logger.info(f"Orphaned child location: {child.id}")
+            else:
+                raise ValueError(
+                    f"Cannot delete location '{location_id}': has {len(children)} children. "
+                    f"Use cascade=True to delete descendants, or orphan_children=True to move children to Inbox."
+                )
+
+        # Delete the location itself
+        deleted_ids.extend(self._delete_location_internal(location_id))
+
+        return deleted_ids
+
+    def _delete_location_internal(self, location_id: str) -> List[str]:
+        """
+        Internal method to delete a location (assumes no children).
+
+        Returns:
+            List containing the deleted location_id
+        """
+        location = self.get_location(location_id)
+        if not location:
+            return []
+
+        # Remove all entity mappings
+        for entity_id in location.entity_ids.copy():
+            if self._entity_to_location.get(entity_id) == location_id:
+                del self._entity_to_location[entity_id]
+                logger.debug(f"Unmapped entity {entity_id} from deleted location {location_id}")
+
+        # Delete location
+        del self._locations[location_id]
+        logger.info(f"Deleted location: {location_id} ({location.name})")
+
+        return [location_id]

@@ -856,6 +856,379 @@ class TestLocationManagerBatchOperations:
         logger.info("✓ No error raised")
 
 
+class TestLocationManagerUpdate:
+    """Test suite for location updates."""
+
+    def test_update_location_name(self):
+        """Test updating a location's name."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update location name")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Updating name to 'Updated Kitchen'")
+        updated = mgr.update_location("kitchen", name="Updated Kitchen")
+        logger.info(f"✓ Updated: {updated.name}")
+
+        location = mgr.get_location("kitchen")
+        assert location.name == "Updated Kitchen"
+        logger.info("✓ Name updated successfully")
+
+    def test_update_location_parent(self):
+        """Test reparenting a location."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update location parent")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="floor2", name="Floor 2", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        logger.info("Created hierarchy: house -> [floor1, floor2], floor1 -> kitchen")
+
+        logger.info("Moving kitchen from floor1 to floor2")
+        updated = mgr.update_location("kitchen", parent_id="floor2")
+        logger.info(f"✓ Updated parent: {updated.parent_id}")
+
+        location = mgr.get_location("kitchen")
+        assert location.parent_id == "floor2"
+        assert "kitchen" in [c.id for c in mgr.children_of("floor2")]
+        assert "kitchen" not in [c.id for c in mgr.children_of("floor1")]
+        logger.info("✓ Parent updated successfully")
+
+    def test_update_location_clear_parent(self):
+        """Test clearing a location's parent (move to Inbox)."""
+        logger.info("=" * 80)
+        logger.info("TEST: Clear location parent")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="house")
+        logger.info("Created location with parent")
+
+        logger.info("Clearing parent (moving to Inbox)")
+        updated = mgr.update_location("kitchen", parent_id="")
+        logger.info(f"✓ Updated parent: {updated.parent_id}")
+
+        location = mgr.get_location("kitchen")
+        assert location.parent_id is None
+        assert location.is_explicit_root is False  # Should be in Inbox
+        logger.info("✓ Parent cleared successfully")
+
+    def test_update_location_aliases(self):
+        """Test updating location aliases."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update location aliases")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen", aliases=["cooking area"])
+        logger.info("Created location with aliases")
+
+        logger.info("Updating aliases")
+        updated = mgr.update_location("kitchen", aliases=["cooking room", "food prep"])
+        logger.info(f"✓ Updated aliases: {updated.aliases}")
+
+        location = mgr.get_location("kitchen")
+        assert location.aliases == ["cooking room", "food prep"]
+        logger.info("✓ Aliases updated successfully")
+
+    def test_update_location_multiple_fields(self):
+        """Test updating multiple fields at once."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update multiple location fields")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Updating name, aliases, and ha_area_id")
+        updated = mgr.update_location(
+            "kitchen",
+            name="Updated Kitchen",
+            aliases=["cooking area"],
+            ha_area_id="area_123",
+        )
+        logger.info(f"✓ Updated: {updated.name}, {updated.aliases}, {updated.ha_area_id}")
+
+        location = mgr.get_location("kitchen")
+        assert location.name == "Updated Kitchen"
+        assert location.aliases == ["cooking area"]
+        assert location.ha_area_id == "area_123"
+        logger.info("✓ Multiple fields updated successfully")
+
+    def test_update_nonexistent_location(self):
+        """Test that updating non-existent location raises error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update non-existent location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        logger.info("Attempting to update non-existent location")
+        try:
+            mgr.update_location("nonexistent", name="New Name")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+    def test_update_location_invalid_parent(self):
+        """Test that updating to invalid parent raises error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Update location with invalid parent")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Attempting to set invalid parent")
+        try:
+            mgr.update_location("kitchen", parent_id="nonexistent")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+    def test_update_location_cycle_prevention(self):
+        """Test that updating parent to create cycle raises error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Prevent cycle when updating parent")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        logger.info("Created hierarchy: house -> floor1 -> kitchen")
+
+        logger.info("Attempting to make house a child of kitchen (would create cycle)")
+        try:
+            mgr.update_location("house", parent_id="kitchen")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+    def test_update_location_self_parent(self):
+        """Test that location cannot be its own parent."""
+        logger.info("=" * 80)
+        logger.info("TEST: Prevent location being its own parent")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        logger.info("Created location")
+
+        logger.info("Attempting to set location as its own parent")
+        try:
+            mgr.update_location("kitchen", parent_id="kitchen")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+
+class TestLocationManagerDelete:
+    """Test suite for location deletion."""
+
+    def test_delete_leaf_location(self):
+        """Test deleting a location with no children."""
+        logger.info("=" * 80)
+        logger.info("TEST: Delete leaf location (no children)")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="house")
+        mgr.add_entity_to_location("light.kitchen", "kitchen")
+        logger.info("Created location with entity mapping")
+
+        logger.info("Deleting kitchen location")
+        deleted_ids = mgr.delete_location("kitchen")
+        logger.info(f"✓ Deleted: {deleted_ids}")
+
+        assert "kitchen" not in [loc.id for loc in mgr.all_locations()]
+        assert mgr.get_location("kitchen") is None
+        assert mgr.get_entity_location("light.kitchen") is None
+        logger.info("✓ Location and entity mappings deleted successfully")
+
+    def test_delete_location_with_children_prevent(self):
+        """Test that deleting location with children raises error by default."""
+        logger.info("=" * 80)
+        logger.info("TEST: Prevent deletion of location with children")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        logger.info("Created hierarchy: house -> floor1 -> kitchen")
+
+        logger.info("Attempting to delete floor1 (has children)")
+        try:
+            mgr.delete_location("floor1")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+        # Verify nothing was deleted
+        assert mgr.get_location("floor1") is not None
+        assert mgr.get_location("kitchen") is not None
+        logger.info("✓ Location and children preserved")
+
+    def test_delete_location_cascade(self):
+        """Test cascade deletion (delete location and all descendants)."""
+        logger.info("=" * 80)
+        logger.info("TEST: Cascade delete location and descendants")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        mgr.create_location(id="bedroom", name="Bedroom", parent_id="floor1")
+        logger.info("Created hierarchy: house -> floor1 -> [kitchen, bedroom]")
+
+        logger.info("Deleting floor1 with cascade=True")
+        deleted_ids = mgr.delete_location("floor1", cascade=True)
+        logger.info(f"✓ Deleted locations: {deleted_ids}")
+
+        assert "floor1" in deleted_ids
+        assert "kitchen" in deleted_ids
+        assert "bedroom" in deleted_ids
+        assert len(deleted_ids) == 3
+
+        assert mgr.get_location("floor1") is None
+        assert mgr.get_location("kitchen") is None
+        assert mgr.get_location("bedroom") is None
+        assert mgr.get_location("house") is not None  # Parent should remain
+        logger.info("✓ Cascade deletion successful")
+
+    def test_delete_location_orphan_children(self):
+        """Test orphan children option (move children to Inbox)."""
+        logger.info("=" * 80)
+        logger.info("TEST: Orphan children when deleting location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        logger.info("Created hierarchy: house -> floor1 -> kitchen")
+
+        logger.info("Deleting floor1 with orphan_children=True")
+        deleted_ids = mgr.delete_location("floor1", orphan_children=True)
+        logger.info(f"✓ Deleted: {deleted_ids}")
+
+        assert "floor1" in deleted_ids
+        assert len(deleted_ids) == 1  # Only floor1 deleted
+
+        assert mgr.get_location("floor1") is None
+        kitchen = mgr.get_location("kitchen")
+        assert kitchen is not None
+        assert kitchen.parent_id is None  # Orphaned
+        assert kitchen.is_explicit_root is False  # In Inbox
+        logger.info("✓ Children orphaned successfully")
+
+    def test_delete_location_entity_cleanup(self):
+        """Test that entities are unmapped when location is deleted."""
+        logger.info("=" * 80)
+        logger.info("TEST: Entity cleanup on location deletion")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        mgr.add_entity_to_location("light.kitchen", "kitchen")
+        mgr.add_entity_to_location("sensor.motion", "kitchen")
+        logger.info("Created location with 2 entities")
+
+        logger.info("Deleting location")
+        deleted_ids = mgr.delete_location("kitchen")
+        logger.info(f"✓ Deleted: {deleted_ids}")
+
+        assert mgr.get_entity_location("light.kitchen") is None
+        assert mgr.get_entity_location("sensor.motion") is None
+        logger.info("✓ Entities unmapped successfully")
+
+    def test_delete_location_module_config_cleanup(self):
+        """Test that module configs are deleted with location."""
+        logger.info("=" * 80)
+        logger.info("TEST: Module config cleanup on location deletion")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="kitchen", name="Kitchen")
+        mgr.set_module_config("kitchen", "occupancy", {"enabled": True})
+        mgr.set_module_config("kitchen", "automation", {"rules": []})
+        logger.info("Created location with module configs")
+
+        logger.info("Deleting location")
+        deleted_ids = mgr.delete_location("kitchen")
+        logger.info(f"✓ Deleted: {deleted_ids}")
+
+        # Configs are part of Location object, so deleted automatically
+        location = mgr.get_location("kitchen")
+        assert location is None
+        logger.info("✓ Module configs deleted with location")
+
+    def test_delete_nonexistent_location(self):
+        """Test that deleting non-existent location raises error."""
+        logger.info("=" * 80)
+        logger.info("TEST: Delete non-existent location")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        logger.info("Attempting to delete non-existent location")
+        try:
+            mgr.delete_location("nonexistent")
+            logger.error("✗ Expected ValueError but none was raised!")
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            logger.info(f"✓ Correctly raised ValueError: {e}")
+
+    def test_delete_location_cascade_complex_hierarchy(self):
+        """Test cascade deletion on complex multi-level hierarchy."""
+        logger.info("=" * 80)
+        logger.info("TEST: Cascade delete complex hierarchy")
+        logger.info("=" * 80)
+
+        mgr = LocationManager()
+        mgr.create_location(id="house", name="House")
+        mgr.create_location(id="floor1", name="Floor 1", parent_id="house")
+        mgr.create_location(id="floor2", name="Floor 2", parent_id="house")
+        mgr.create_location(id="kitchen", name="Kitchen", parent_id="floor1")
+        mgr.create_location(id="bedroom", name="Bedroom", parent_id="floor1")
+        mgr.create_location(id="bathroom", name="Bathroom", parent_id="floor1")
+        logger.info("Created: house -> [floor1, floor2], floor1 -> [kitchen, bedroom, bathroom]")
+
+        logger.info("Deleting floor1 with cascade=True")
+        deleted_ids = mgr.delete_location("floor1", cascade=True)
+        logger.info(f"✓ Deleted: {deleted_ids}")
+
+        assert len(deleted_ids) == 4  # floor1 + 3 children
+        assert "floor1" in deleted_ids
+        assert "kitchen" in deleted_ids
+        assert "bedroom" in deleted_ids
+        assert "bathroom" in deleted_ids
+
+        # Verify all deleted
+        for loc_id in deleted_ids:
+            assert mgr.get_location(loc_id) is None
+
+        # Verify floor2 and house remain
+        assert mgr.get_location("floor2") is not None
+        assert mgr.get_location("house") is not None
+        logger.info("✓ Complex cascade deletion successful")
+
+
 if __name__ == "__main__":
     # Enable running tests directly
     pytest.main([__file__, "-v", "-s"])

@@ -4,6 +4,11 @@
 **Date**: 2025.11.26  
 **Audience**: Platform developers integrating home-topology into Home Assistant.
 
+> **Quick Links**:  
+> - [API Reference](./api-reference.md) - Complete API documentation
+> - [API Cheat Sheet](./api-cheat-sheet.md) - Quick reference
+> - [Module APIs](../library/modules/) - Detailed module documentation
+
 > **v2.3 Changes**: 
 > - Events vs Commands API separation
 > - Timer suspension during lock
@@ -1500,7 +1505,9 @@ This guide covered:
 
 ### Next Steps
 
-- Read the [module specifications](../library/modules/)
+- Read the [API Reference](./api-reference.md) for complete API documentation
+- Use the [API Cheat Sheet](./api-cheat-sheet.md) for quick reference
+- Explore [module specifications](../library/modules/) for detailed module docs
 - Join the [discussions](https://github.com/mjcumming/home-topology/discussions)
 - Build your integration!
 

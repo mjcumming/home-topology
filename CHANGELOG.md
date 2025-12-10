@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### LocationManager CRUD Operations (2025.01.27)
+- **`update_location()` method**: Update location properties (name, parent, aliases, ha_area_id, is_explicit_root)
+  - Validates parent exists
+  - Prevents cycles (location cannot be its own parent or ancestor)
+  - Supports clearing parent (move to Inbox) with empty string
+  - Optional parameters (None = keep current value)
+- **`delete_location()` method**: Delete locations from topology
+  - **Default behavior**: Prevents deletion if location has children (safest)
+  - **Cascade option**: `cascade=True` deletes entire subtree (all descendants)
+  - **Orphan option**: `orphan_children=True` moves children to Inbox (unassigned)
+  - Automatically unmaps all entities from deleted locations
+  - Returns list of deleted location IDs
+  - Comprehensive error handling and validation
+- **Complete CRUD support**: LocationManager now has full Create, Read, Update, Delete operations
+- **Comprehensive tests**: 17 new tests covering all update and delete scenarios
+
+#### API Documentation (2025.01.27)
+- **API Reference** (`docs/integration/api-reference.md`): Complete API documentation for all core components and modules
+- **API Cheat Sheet** (`docs/integration/api-cheat-sheet.md`): Quick reference guide for common operations
+- **Module API Docs**: Detailed API documentation for modules
+  - `docs/library/modules/automation/api.md` - AutomationModule API
+  - `docs/library/modules/ambient/api.md` - AmbientLightModule API
+  - `docs/library/modules/presence/api.md` - PresenceModule API
+- **Integration Guide updates**: Added links to new API documentation
+
 #### AmbientLightModule (2025.12.09)
 - **NEW MODULE**: AmbientLightModule for intelligent ambient light detection
 - **Hierarchical sensor lookup**: Automatically inherit lux sensors from parent locations

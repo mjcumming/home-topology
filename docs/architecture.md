@@ -201,6 +201,8 @@ class LocationManager:
     def get_location(location_id: str) -> Optional[Location]
     def get_location_by_name(name: str) -> Optional[Location]
     def all_locations() -> List[Location]
+    def update_location(location_id: str, name: Optional[str] = None, ...) -> Location
+    def delete_location(location_id: str, cascade: bool = False, orphan_children: bool = False) -> List[str]
     
     # Hierarchy queries
     def parent_of(location_id: str) -> Optional[Location]
