@@ -333,7 +333,7 @@ Rationale:
 - Handlers are fast, CPU-bound operations
 - No asyncio complexity in the core kernel
 
-For I/O-heavy work, modules use `run_in_background(coro)` helper.
+For I/O-heavy work, integrations should schedule async/background tasks outside core handlers.
 
 ### 5.3 Error Isolation
 
@@ -813,7 +813,7 @@ State persistence is triggered by HA (e.g., on shutdown, periodic backup).
 ### 10.1 Synchronous EventBus
 - **Decision**: EventBus is synchronous, handlers wrapped in try/except
 - **Rationale**: Simplicity, predictability, error isolation
-- **Escape hatch**: `run_in_background()` for I/O
+- **Escape hatch**: integration-managed async/background tasks for I/O
 
 ### 10.2 Platform Independence
 - **Decision**: Core library has zero HA dependencies

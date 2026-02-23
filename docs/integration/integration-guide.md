@@ -1001,7 +1001,7 @@ def on_sensor_changed(self, event: Event):
 
 **❌ DON'T:**
 
-- Perform I/O in event handlers (use `run_in_background()`)
+- Avoid blocking I/O in event handlers; offload work to integration-managed async tasks
 - Query large datasets synchronously
 - Update platform state for every event (debounce)
 
@@ -1516,5 +1516,4 @@ This guide covered:
 **Document Version**: 2.3  
 **Last Updated**: 2025.11.26  
 **Status**: Living Document
-
 

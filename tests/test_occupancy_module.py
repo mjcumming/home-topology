@@ -30,6 +30,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def publish_signal(
+    event_bus: EventBus,
+    location_id: str,
+    source_id: str,
+    event_type: str,
+    timeout: int | None = None,
+) -> None:
+    """Publish a normalized occupancy signal event."""
+    payload = {
+        "event_type": event_type,
+        "source_id": source_id,
+    }
+    if timeout is not None:
+        payload["timeout"] = timeout
+
+    event_bus.publish(
+        Event(
+            type="occupancy.signal",
+            source="test.integration",
+            location_id=location_id,
+            entity_id=source_id,
+            payload=payload,
+            timestamp=datetime.now(UTC),
+        )
+    )
+
+
 @pytest.fixture
 def location_manager():
     """Create a LocationManager with a realistic hierarchy."""
@@ -141,19 +168,8 @@ class TestOccupancyModuleMotionEvents:
         event_bus.subscribe(capture_occupancy_events)
         logger.info("✓ Event capture handler subscribed")
 
-        logger.info("Sending motion sensor event: off → on")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="binary_sensor.kitchen_motion",
-                payload={
-                    "old_state": "off",
-                    "new_state": "on",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        logger.info("Sending motion occupancy signal: trigger")
+        publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
         logger.info(f"Events emitted: {len(emitted_events)}")
 
@@ -194,16 +210,14 @@ class TestOccupancyModuleMotionEvents:
 
         event_bus.subscribe(capture_events)
 
-        logger.info("Sending motion sensor event: off → off")
+        logger.info("Sending invalid occupancy signal")
         event_bus.publish(
             Event(
-                type="sensor.state_changed",
-                source="ha",
+                type="occupancy.signal",
+                source="test.integration",
+                location_id="kitchen",
                 entity_id="binary_sensor.kitchen_motion",
-                payload={
-                    "old_state": "off",
-                    "new_state": "off",
-                },
+                payload={"event_type": "invalid"},
                 timestamp=datetime.now(UTC),
             )
         )
@@ -233,16 +247,8 @@ class TestOccupancyModuleHierarchyPropagation:
 
         event_bus.subscribe(capture_events)
 
-        logger.info("Triggering kitchen motion...")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="binary_sensor.kitchen_motion",
-                payload={"old_state": "off", "new_state": "on"},
-                timestamp=datetime.now(UTC),
-            )
-        )
+        logger.info("Triggering kitchen occupancy signal...")
+        publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
         logger.info("Analyzing propagation...")
         location_ids = {e.location_id for e in emitted_events}
@@ -295,18 +301,7 @@ class TestOccupancyModulePresenceSensors:
         event_bus.subscribe(capture_events)
 
         logger.info("Simulating presence detected...")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="ble_presence",
-                payload={
-                    "old_state": "off",
-                    "new_state": "on",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "ble_presence", "hold")
 
         logger.info("Verifying HOLD was created...")
         kitchen_events = [e for e in emitted_events if e.location_id == "kitchen"]
@@ -330,36 +325,14 @@ class TestOccupancyModulePresenceSensors:
         location_manager.add_entity_to_location("ble_presence", "kitchen")
 
         logger.info("Step 1: Presence detected (HOLD)")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="ble_presence",
-                payload={
-                    "old_state": "off",
-                    "new_state": "on",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "ble_presence", "hold")
 
         state = occupancy_module.get_location_state("kitchen")
         assert state["occupied"] is True
         assert "ble_presence" in state["active_holds"]
 
         logger.info("Step 2: Presence cleared (RELEASE)")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="ble_presence",
-                payload={
-                    "old_state": "on",
-                    "new_state": "off",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "ble_presence", "release", timeout=120)
 
         state = occupancy_module.get_location_state("kitchen")
         logger.info(f"After RELEASE: occupied={state['occupied']}, holds={state['active_holds']}")
@@ -381,15 +354,7 @@ class TestOccupancyModuleStatePersistence:
         logger.info("=" * 80)
 
         logger.info("Step 1: Trigger occupancy in kitchen")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="binary_sensor.kitchen_motion",
-                payload={"old_state": "off", "new_state": "on"},
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
         state_before = occupancy_module.get_location_state("kitchen")
         logger.info(f"Kitchen state before dump: occupied={state_before['occupied']}")
@@ -480,10 +445,14 @@ class TestOccupancyModuleTimeouts:
         logger.info("Triggering motion event...")
         event_bus.publish(
             Event(
-                type="sensor.state_changed",
-                source="ha",
+                type="occupancy.signal",
+                source="test.integration",
+                location_id="kitchen",
                 entity_id="binary_sensor.kitchen_motion",
-                payload={"old_state": "off", "new_state": "on"},
+                payload={
+                    "event_type": "trigger",
+                    "source_id": "binary_sensor.kitchen_motion",
+                },
                 timestamp=now,
             )
         )
@@ -555,19 +524,8 @@ class TestOccupancyModuleDoorSensors:
 
         event_bus.subscribe(capture_events)
 
-        logger.info("Sending door sensor event: off → on (door opened)")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="binary_sensor.kitchen_door",
-                payload={
-                    "old_state": "off",
-                    "new_state": "on",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        logger.info("Sending door occupancy signal: trigger")
+        publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_door", "trigger", timeout=120)
 
         logger.info("Verifying door sensor triggered occupancy...")
         occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
@@ -603,19 +561,8 @@ class TestOccupancyModuleMediaPlayers:
 
         event_bus.subscribe(capture_events)
 
-        logger.info("Sending media player event: idle → playing")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="media_player.kitchen_speaker",
-                payload={
-                    "old_state": "idle",
-                    "new_state": "playing",
-                },
-                timestamp=datetime.now(UTC),
-            )
-        )
+        logger.info("Sending media player event: hold")
+        publish_signal(event_bus, "kitchen", "media_player.kitchen_speaker", "hold")
 
         logger.info("Verifying media player created hold...")
         occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
@@ -647,15 +594,7 @@ class TestOccupancyModuleMediaPlayers:
         event_bus.subscribe(capture_events)
 
         logger.info("Step 1: Media starts playing (creates hold)")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="media_player.kitchen_speaker",
-                payload={"old_state": "idle", "new_state": "playing"},
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "media_player.kitchen_speaker", "hold")
 
         state1 = occupancy_module.get_location_state("kitchen")
         logger.info(f"After playing: occupied={state1['occupied']}, holds={state1['active_holds']}")
@@ -664,15 +603,7 @@ class TestOccupancyModuleMediaPlayers:
         emitted_events.clear()
 
         logger.info("Step 2: Media stops (releases hold, starts trailing timeout)")
-        event_bus.publish(
-            Event(
-                type="sensor.state_changed",
-                source="ha",
-                entity_id="media_player.kitchen_speaker",
-                payload={"old_state": "playing", "new_state": "idle"},
-                timestamp=datetime.now(UTC),
-            )
-        )
+        publish_signal(event_bus, "kitchen", "media_player.kitchen_speaker", "release", timeout=120)
 
         state2 = occupancy_module.get_location_state("kitchen")
         logger.info(

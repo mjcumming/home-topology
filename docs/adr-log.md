@@ -20,7 +20,7 @@
 - Expected load: 10-100 events/sec
 
 **Decision**: 
-EventBus is synchronous by default. Handlers are fast, CPU-bound. For I/O-heavy work, use `run_in_background()` helper.
+EventBus is synchronous by default. Handlers are fast, CPU-bound. For I/O-heavy work, integrations should use async/background tasks.
 
 **Consequences**:
 - ✅ Simple, predictable execution

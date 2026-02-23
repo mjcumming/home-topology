@@ -9,8 +9,6 @@ from unittest.mock import Mock
 
 from home_topology.modules.ambient import (
     AmbientLightModule,
-    AmbientLightReading,
-    AmbientLightConfig,
 )
 from home_topology.core import LocationManager, EventBus
 

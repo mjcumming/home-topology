@@ -7,7 +7,7 @@ and automatic fallback strategies.
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict, List, TYPE_CHECKING
+from typing import Optional, Dict, TYPE_CHECKING
 
 from home_topology.modules.base import LocationModule
 from .models import AmbientLightReading, AmbientLightConfig

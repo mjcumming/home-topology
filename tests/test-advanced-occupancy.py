@@ -646,10 +646,14 @@ class TestFollowParentIntegration:
         # Trigger living room motion
         event_bus.publish(
             Event(
-                type="sensor.state_changed",
-                source="ha",
+                type="occupancy.signal",
+                source="test.integration",
+                location_id="living_room",
                 entity_id="binary_sensor.living_room_motion",
-                payload={"old_state": "off", "new_state": "on"},
+                payload={
+                    "event_type": "trigger",
+                    "source_id": "binary_sensor.living_room_motion",
+                },
                 timestamp=datetime.now(UTC),
             )
         )

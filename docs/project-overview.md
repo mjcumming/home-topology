@@ -21,8 +21,8 @@ It's designed to be the "kernel" for smart home logic, with Home Assistant (or o
 ```
 home-topology/
 ├── README.md                      # Quick start, installation
-├── DESIGN.md                      # Architecture specification ⭐
-├── CODING-STANDARDS.md            # Coding conventions ⭐
+├── docs/architecture.md           # Architecture specification ⭐
+├── docs/coding-standards.md       # Coding conventions ⭐
 ├── CONTRIBUTING.md                # How to contribute ⭐
 ├── CHANGELOG.md                   # Version history
 ├── pyproject.toml                 # Package configuration
@@ -77,7 +77,7 @@ home-topology/
 
 **Why**: Simplicity, predictability, easy debugging. No asyncio complexity.
 
-**Escape Hatch**: Modules can use `run_in_background()` for I/O-heavy work.
+**I/O guidance**: Keep handlers fast; integrations should offload I/O asynchronously.
 
 ---
 
@@ -174,9 +174,9 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full process.
 | Document | Purpose |
 |----------|---------|
 | **README.md** | Quick start, installation, basic usage |
-| **docs/integration-guide.md** | Complete guide for building platform integrations 🔌⭐ |
-| **DESIGN.md** | Architecture spec, design decisions ⭐ |
-| **CODING-STANDARDS.md** | Code style, patterns, anti-patterns ⭐ |
+| **docs/integration/integration-guide.md** | Complete guide for building platform integrations 🔌⭐ |
+| **docs/architecture.md** | Architecture spec, design decisions ⭐ |
+| **docs/coding-standards.md** | Code style, patterns, anti-patterns ⭐ |
 | **CONTRIBUTING.md** | Development workflow, PR process ⭐ |
 | **CHANGELOG.md** | Version history, release notes |
 
@@ -373,4 +373,3 @@ TBD (likely MIT or Apache-2.0)
 
 **Document Status**: Living Document  
 **Last Updated**: 2025-11-24
-

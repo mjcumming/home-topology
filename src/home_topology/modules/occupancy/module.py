@@ -2,6 +2,10 @@
 
 This module wraps the core occupancy engine and integrates it with the
 home-topology kernel (EventBus, LocationManager).
+
+Integration contract:
+- The module consumes normalized `occupancy.signal` events.
+- Signal classification happens in the integration layer, not in this module.
 """
 
 import logging
@@ -36,7 +40,8 @@ class OccupancyModule(LocationModule):
     - Holds and timers coexist (timers preserved during holds)
 
     API:
-    - Events (from device mappings): trigger(), hold(), release()
+    - Signals (from integration): `occupancy.signal`
+    - Events API (for direct calls/tests): trigger(), hold(), release()
     - Commands (from automations/UI): vacate(), lock(), unlock(), unlock_all()
 
     Note: This module does NOT schedule timeout checks internally.
@@ -71,8 +76,8 @@ class OccupancyModule(LocationModule):
         self._engine = OccupancyEngine(configs)
         logger.info(f"Occupancy engine initialized with {len(configs)} locations")
 
-        # Subscribe to platform sensor events
-        bus.subscribe(self._on_sensor_event, EventFilter(event_type="sensor.state_changed"))
+        # Subscribe to normalized occupancy signal events.
+        bus.subscribe(self._on_occupancy_signal, EventFilter(event_type="occupancy.signal"))
 
         # Note: Host integration must call check_timeouts() periodically
         # Use get_next_timeout() to know when to schedule
@@ -137,10 +142,9 @@ class OccupancyModule(LocationModule):
 
         return configs
 
-    def _on_sensor_event(self, event: Event) -> None:
-        """Handle sensor state change from platform."""
-        # Translate to occupancy event
-        occ_event = self._translate_event(event)
+    def _on_occupancy_signal(self, event: Event) -> None:
+        """Handle normalized occupancy signal from integration."""
+        occ_event = self._translate_signal_event(event)
         if not occ_event:
             return
 
@@ -156,78 +160,88 @@ class OccupancyModule(LocationModule):
         # Note: Host is responsible for scheduling timeout checks
         # Use get_next_timeout() to know when to schedule
 
-    def _translate_event(self, event: Event) -> Optional[OccupancyEvent]:
-        """Translate platform Event to OccupancyEvent.
+    def _translate_signal_event(self, event: Event) -> Optional[OccupancyEvent]:
+        """Translate a normalized `occupancy.signal` event to OccupancyEvent.
 
-        This is the integration layer's signal classification logic.
-        It maps platform entity state changes to occupancy event types.
+        Event format:
+            type="occupancy.signal"
+            location_id="<location-id>"  # preferred
+            entity_id="<optional-entity-id>"
+            payload={
+                "event_type": "trigger|extend|hold|release|vacate|lock|unlock|unlock_all",
+                "source_id": "<optional-source-id>",
+                "timeout": 120,  # optional
+            }
         """
-        entity_id = event.entity_id
-        if not entity_id:
+        payload = event.payload or {}
+
+        raw_event_type = payload.get("event_type")
+        if raw_event_type is None:
+            raw_event_type = payload.get("signal_type")
+
+        if raw_event_type is None:
+            logger.warning("Ignoring occupancy.signal without payload.event_type")
             return None
 
-        # Map entity to location
-        assert self._loc_manager is not None
-        location_id = self._loc_manager.get_entity_location(entity_id)
+        event_type = self._parse_event_type(raw_event_type)
+        if event_type is None:
+            logger.warning(f"Ignoring occupancy.signal with unknown event_type: {raw_event_type}")
+            return None
+
+        timeout: Optional[int] = None
+        if payload.get("timeout") is not None:
+            try:
+                timeout = int(payload["timeout"])
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Ignoring occupancy.signal with invalid timeout: {payload.get('timeout')}"
+                )
+                return None
+
+        source_id = payload.get("source_id") or event.entity_id or event.source
+        location_id = event.location_id or payload.get("location_id")
+
+        if not location_id and event.entity_id and self._loc_manager:
+            # Optional convenience if integration sends entity_id but omits location_id.
+            location_id = self._loc_manager.get_entity_location(event.entity_id)
+
         if not location_id:
-            logger.debug(f"Entity {entity_id} not mapped to any location")
+            logger.warning("Ignoring occupancy.signal without location_id")
             return None
 
-        # Determine event type and timeout from entity state
-        old_state = event.payload.get("old_state")
-        new_state = event.payload.get("new_state")
-
-        event_type, timeout = self._classify_signal(entity_id, old_state, new_state)
-        if not event_type:
+        if self._loc_manager and self._loc_manager.get_location(location_id) is None:
+            logger.warning(f"Ignoring occupancy.signal for unknown location: {location_id}")
             return None
 
         return OccupancyEvent(
             location_id=location_id,
             event_type=event_type,
-            source_id=entity_id,
+            source_id=source_id,
             timestamp=event.timestamp,
             timeout=timeout,
         )
 
-    def _classify_signal(
-        self, entity_id: str, old_state: Optional[str], new_state: Optional[str]
-    ) -> tuple[Optional[EventType], Optional[int]]:
-        """Classify entity state change to EventType and timeout.
+    def _parse_event_type(self, value: Any) -> Optional[EventType]:
+        """Parse event type from value/name to EventType."""
+        if isinstance(value, EventType):
+            return value
 
-        This is the integration layer's signal classification logic.
-        Returns (event_type, timeout_seconds) or (None, None) if not occupancy-related.
+        if not isinstance(value, str):
+            return None
 
-        Note: This logic belongs in the integration layer.
-        This implementation serves as an example/reference.
-        """
+        normalized = value.strip()
+        if not normalized:
+            return None
 
-        # Motion sensor: off→on = TRIGGER with 5 min timeout
-        if "motion" in entity_id.lower():
-            if old_state == "off" and new_state == "on":
-                return EventType.TRIGGER, 300  # 5 minutes
+        try:
+            return EventType(normalized.lower())
+        except ValueError:
+            pass
 
-        # Presence/radar/mmwave: HOLD / RELEASE
-        if any(x in entity_id.lower() for x in ["presence", "radar", "mmwave", "ble_"]):
-            if old_state == "off" and new_state == "on":
-                return EventType.HOLD, None  # No timeout for HOLD
-            elif old_state == "on" and new_state == "off":
-                return EventType.RELEASE, 120  # 2 min trailing timeout
-
-        # Door sensor: off→on = TRIGGER with 2 min timeout
-        if "door" in entity_id.lower():
-            if old_state == "off" and new_state == "on":
-                return EventType.TRIGGER, 120  # 2 minutes
-
-        # Media player: playing = EXTEND (only keeps area occupied if already is)
-        if "media_player" in entity_id.lower():
-            if old_state != "playing" and new_state == "playing":
-                # Extend occupancy for 2 hours while playing, but don't trigger if vacant
-                return EventType.EXTEND, 7200
-            elif old_state == "playing" and new_state != "playing":
-                # When media stops, we just let the timer expire normally
-                return None, None
-
-        return None, None
+        try:
+            return EventType[normalized.upper()]
+        except KeyError:
+            return None
 
     def _emit_occupancy_changed(self, transition: Any) -> None:
         """Emit semantic occupancy.changed event."""

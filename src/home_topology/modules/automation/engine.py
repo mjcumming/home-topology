@@ -16,6 +16,8 @@ from .models import (
     AutomationRule,
     RuleExecution,
     EventTriggerConfig,
+    StateTriggerConfig,
+    TimeTriggerConfig,
     ServiceCallAction,
     DelayAction,
     ExecutionMode,
@@ -226,7 +228,38 @@ class AutomationEngine:
 
             return True
 
-        # Other trigger types (state, time) handled elsewhere
+        if isinstance(trigger, StateTriggerConfig):
+            if event.type not in ("state.changed", "sensor.state_changed"):
+                return False
+
+            if event.entity_id != trigger.entity_id:
+                return False
+
+            old_state = event.payload.get("old_state")
+            new_state = event.payload.get("new_state")
+
+            if trigger.from_state is not None and old_state != trigger.from_state:
+                return False
+            if trigger.to_state is not None and new_state != trigger.to_state:
+                return False
+
+            if trigger.for_seconds > 0:
+                held_for = event.payload.get("for_seconds", 0)
+                try:
+                    return float(held_for) >= trigger.for_seconds
+                except (TypeError, ValueError):
+                    return False
+
+            return True
+
+        if isinstance(trigger, TimeTriggerConfig):
+            # Host integrations should emit time ticks to evaluate time triggers.
+            if event.type != "time.tick":
+                return False
+            return event.timestamp.time().replace(microsecond=0) == trigger.at.replace(
+                microsecond=0
+            )
+
         return False
 
     # =========================================================================

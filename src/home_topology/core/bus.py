@@ -85,7 +85,10 @@ class EventFilter:
             return False
 
         # Check location
-        if self.location_id and event.location_id:
+        if self.location_id:
+            if not event.location_id:
+                return False
+
             if event.location_id == self.location_id:
                 return True
 

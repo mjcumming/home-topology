@@ -145,6 +145,22 @@ def test_event_bus_filtering():
     assert len(occupancy_events) == 1
 
 
+def test_event_bus_location_filter_requires_event_location():
+    """Test location-scoped filters do not match events without location_id."""
+    from home_topology.core.bus import EventFilter
+
+    bus = EventBus()
+    received = []
+
+    def handler(event: Event):
+        received.append(event)
+
+    bus.subscribe(handler, EventFilter(location_id="kitchen"))
+
+    bus.publish(Event(type="occupancy.changed", source="test"))
+    assert len(received) == 0
+
+
 def test_module_config():
     """Test module configuration storage."""
     mgr = LocationManager()

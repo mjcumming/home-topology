@@ -11,6 +11,33 @@ from home_topology import Event, EventBus, LocationManager
 from home_topology.modules.occupancy import OccupancyModule
 
 
+def publish_signal(
+    event_bus: EventBus,
+    location_id: str,
+    source_id: str,
+    event_type: str,
+    timeout: int | None = None,
+) -> None:
+    """Publish a normalized occupancy signal event."""
+    payload = {
+        "event_type": event_type,
+        "source_id": source_id,
+    }
+    if timeout is not None:
+        payload["timeout"] = timeout
+
+    event_bus.publish(
+        Event(
+            type="occupancy.signal",
+            source="test.integration",
+            location_id=location_id,
+            entity_id=source_id,
+            payload=payload,
+            timestamp=datetime.now(UTC),
+        )
+    )
+
+
 @pytest.fixture
 def location_manager():
     """Create a LocationManager with a simple hierarchy."""
@@ -77,19 +104,7 @@ def test_motion_sensor_triggers_occupancy(event_bus, occupancy_module, location_
 
     event_bus.subscribe(capture_occupancy_events, event_filter=None)
 
-    # Send motion sensor event (off → on)
-    event_bus.publish(
-        Event(
-            type="sensor.state_changed",
-            source="ha",
-            entity_id="binary_sensor.kitchen_motion",
-            payload={
-                "old_state": "off",
-                "new_state": "on",
-            },
-            timestamp=datetime.now(UTC),
-        )
-    )
+    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
     # Should emit occupancy.changed event
     occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
@@ -115,16 +130,7 @@ def test_hierarchy_propagation(event_bus, occupancy_module, location_manager):
 
     event_bus.subscribe(capture_events)
 
-    # Trigger kitchen motion
-    event_bus.publish(
-        Event(
-            type="sensor.state_changed",
-            source="ha",
-            entity_id="binary_sensor.kitchen_motion",
-            payload={"old_state": "off", "new_state": "on"},
-            timestamp=datetime.now(UTC),
-        )
-    )
+    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
     # Should have occupancy events for: kitchen, main_floor, house
     location_ids = {e.location_id for e in emitted_events}
@@ -154,19 +160,7 @@ def test_presence_sensor_creates_hold(event_bus, occupancy_module, location_mana
 
     event_bus.subscribe(capture_events)
 
-    # Presence detected
-    event_bus.publish(
-        Event(
-            type="sensor.state_changed",
-            source="ha",
-            entity_id="ble_presence",
-            payload={
-                "old_state": "off",
-                "new_state": "on",
-            },
-            timestamp=datetime.now(UTC),
-        )
-    )
+    publish_signal(event_bus, "kitchen", "ble_presence", "hold")
 
     # Check emitted event has active_holds
     kitchen_event = next(e for e in emitted_events if e.location_id == "kitchen")
@@ -180,16 +174,7 @@ def test_presence_sensor_creates_hold(event_bus, occupancy_module, location_mana
 
 def test_state_persistence(event_bus, occupancy_module, location_manager):
     """Test state dump and restore."""
-    # Trigger occupancy
-    event_bus.publish(
-        Event(
-            type="sensor.state_changed",
-            source="ha",
-            entity_id="binary_sensor.kitchen_motion",
-            payload={"old_state": "off", "new_state": "on"},
-            timestamp=datetime.now(UTC),
-        )
-    )
+    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
     # Kitchen should be occupied
     assert occupancy_module.get_location_state("kitchen")["occupied"] is True

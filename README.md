@@ -141,7 +141,7 @@ class Event:
 * `publish(event)` synchronously delivers events to subscribers.
 * Handlers are wrapped in `try/except` so one bad module cannot crash the kernel.
 * Modules treat handlers as **fast and CPU-bound**.
-* A helper (`run_in_background`) is provided for I/O-heavy work.
+* For I/O-heavy work, the host integration should offload asynchronously.
 
 ### Modules
 
@@ -229,14 +229,18 @@ loc_mgr.set_module_config(
     },
 )
 
-# 4. Feed a sensor event into the kernel (e.g. from Home Assistant)
+# 4. Feed a normalized occupancy signal into the kernel
 bus.publish(
     Event(
-        type="sensor.state_changed",
-        source="ha",
+        type="occupancy.signal",
+        source="ha_adapter",
         location_id="kitchen",
         entity_id="binary_sensor.kitchen_motion",
-        payload={"old_state": "off", "new_state": "on"},
+        payload={
+            "event_type": "trigger",
+            "source_id": "binary_sensor.kitchen_motion",
+            "timeout": 300,
+        },
         timestamp=datetime.utcnow(),
     )
 )
@@ -252,7 +256,7 @@ In a Home Assistant integration, you'd:
 * Expose module state back as HA entities.
 * Optionally provide a UI to configure modules per location.
 
-> **See the [Integration Guide](./docs/integration-guide.md) for a complete, production-ready Home Assistant integration example.**
+> **See the [Integration Guide](./docs/integration/integration-guide.md) for a complete, production-ready Home Assistant integration example.**
 
 ---
 
@@ -272,7 +276,7 @@ A typical HA setup would add:
     * Expose module state (e.g., occupancy sensors) back to HA.
     * Provide a UI for Locations and their modules (with an "Unassigned/Inbox" view for entities).
 
-**Building an integration?** See the complete **[Integration Guide](./docs/integration-guide.md)** for step-by-step instructions, patterns, and a full Home Assistant example.
+**Building an integration?** See the complete **[Integration Guide](./docs/integration/integration-guide.md)** for step-by-step instructions, patterns, and a full Home Assistant example.
 
 ---
 
@@ -319,7 +323,7 @@ make check
 - **[docs/project-status.md](./docs/project-status.md)** ⭐ - Current sprint status, task dashboard
 
 **🔌 Integration**:
-- **[docs/integration-guide.md](./docs/integration-guide.md)** ⭐ - Complete guide for platform integrators
+- **[docs/integration/integration-guide.md](./docs/integration/integration-guide.md)** ⭐ - Complete guide for platform integrators
 
 **📊 Project**:
 - **[docs/decisions-pending.md](./docs/decisions-pending.md)** - Decisions log (decided and deferred)
@@ -332,12 +336,10 @@ make check
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - How to contribute
 
 **📦 Modules**:
-- **[docs/modules/occupancy-design.md](./docs/modules/occupancy-design.md)** - Occupancy module specification (current implementation)
-- **[docs/modules/occupancy-rule-engine-design.md](./docs/modules/occupancy-rule-engine-design.md)** ⭐ - Rule-based occupancy engine design
-- **[docs/modules/occupancy-rule-engine-decisions.md](./docs/modules/occupancy-rule-engine-decisions.md)** - Rule engine design decisions
-- **[docs/modules/occupancy-rule-engine-gaps.md](./docs/modules/occupancy-rule-engine-gaps.md)** - Gaps analysis for rule engine
-- **[docs/modules/occupancy-integration.md](./docs/modules/occupancy-integration.md)** - Occupancy integration status
-- **[docs/modules/actions-design.md](./docs/modules/actions-design.md)** - Actions module specification (placeholder)
+- **[docs/modules/occupancy-integration.md](./docs/modules/occupancy-integration.md)** ⭐ - Occupancy integration contract and mappings
+- **[docs/modules/occupancy-presence-interaction.md](./docs/modules/occupancy-presence-interaction.md)** - Occupancy and presence interaction model
+- **[docs/modules/automation-architecture.md](./docs/modules/automation-architecture.md)** - Automation module architecture
+- **[docs/modules/ambient-module-design.md](./docs/modules/ambient-module-design.md)** - Ambient module design
 
 **🧪 Testing**:
 - **[docs/testing/guide.md](./docs/testing/guide.md)** - Full testing documentation

@@ -51,6 +51,7 @@ class AutomationModule(LocationModule):
         self._platform: Optional["PlatformAdapter"] = platform
         self._occupancy: Optional["OccupancyModule"] = None
         self._engine: Optional[AutomationEngine] = None
+        self._subscribed: bool = False
 
     @property
     def id(self) -> str:
@@ -67,8 +68,8 @@ class AutomationModule(LocationModule):
         Must be called before attach() if not provided in constructor.
         """
         self._platform = platform
-        if self._engine:
-            # Reinitialize engine with new platform
+        # If attached, (re)initialize now so late platform wiring works.
+        if self._loc_manager:
             self._engine = AutomationEngine(platform, self._occupancy)
             self._reload_all_rules()
 
@@ -79,7 +80,7 @@ class AutomationModule(LocationModule):
         Optional, but required for LocationOccupiedCondition to work.
         """
         self._occupancy = occupancy
-        if self._engine:
+        if self._platform and self._loc_manager:
             self._engine = AutomationEngine(self._platform, occupancy)
             self._reload_all_rules()
 
@@ -93,6 +94,13 @@ class AutomationModule(LocationModule):
         self._bus = bus
         self._loc_manager = loc_manager
 
+        if not self._subscribed:
+            bus.subscribe(
+                self._on_kernel_event,
+                EventFilter(),
+            )
+            self._subscribed = True
+
         if not self._platform:
             logger.warning(
                 "AutomationModule attached without platform adapter. "
@@ -105,12 +113,6 @@ class AutomationModule(LocationModule):
 
         # Load rules from all locations
         self._reload_all_rules()
-
-        # Subscribe to occupancy events
-        bus.subscribe(
-            self._on_occupancy_changed,
-            EventFilter(event_type="occupancy.changed"),
-        )
 
         logger.info("AutomationModule ready")
 
@@ -147,8 +149,8 @@ class AutomationModule(LocationModule):
         )
         logger.debug(f"Loaded {len(config.rules)} rules for {location_id}")
 
-    def _on_occupancy_changed(self, event: Event) -> None:
-        """Handle occupancy change events."""
+    def _on_kernel_event(self, event: Event) -> None:
+        """Handle kernel events and evaluate matching automation rules."""
         if not self._engine:
             logger.debug("No engine, skipping event")
             return
