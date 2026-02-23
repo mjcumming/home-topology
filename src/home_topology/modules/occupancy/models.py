@@ -34,6 +34,7 @@ class EventType(Enum):
 
     # Events (from device mappings)
     TRIGGER = "trigger"  # Activity detected → occupied + timer
+    EXTEND = "extend"  # Activity detected → extends existing timer (no trigger if vacant)
     HOLD = "hold"  # Presence detected → occupied indefinitely
     RELEASE = "release"  # Presence cleared → check timer or start trailing
 

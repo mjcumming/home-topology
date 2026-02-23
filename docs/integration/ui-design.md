@@ -2,9 +2,9 @@
 
 > This document defines the UI design for the Home Topology Location Manager. It drives UI implementation in the Home Assistant integration.
 
-**Status**: Design Complete (Implementation Ready)  
-**Last Updated**: 2025-12-02  
-**Target Platform**: Home Assistant Panel (standalone view)  
+**Status**: Design Complete (Implementation Ready)
+**Last Updated**: 2025-12-02
+**Target Platform**: Home Assistant Panel (standalone view)
 **Technology**: Lit (LitElement) - See [Section 10](#10-implementation-notes) for rationale
 
 ---
@@ -14,7 +14,7 @@
 ### 1.1 Purpose
 
 The Location Manager UI provides a visual interface for:
-- **Modeling** the spatial topology of a home (floors, rooms, zones)
+- **Modeling** the spatial topology of a home (floors, rooms, buildings/outdoor roots)
 - **Configuring** behavior modules attached to locations (Occupancy, Actions)
 - **Managing** entity-to-location assignments
 - **Visualizing** location state (occupied, vacant, etc.)
@@ -54,11 +54,10 @@ This is a **standalone panel** in Home Assistant (similar to Energy Dashboard or
 │  │  └─ Office                     │  Wasp-in-a-Box       [ ]        │
 │  │                                │                                 │
 │  ├─ Second Floor                  │  ─────────────────────────────  │
-│  │  ├─ Master Suite               │  INPUT TRIGGERS                 │
-│  │  │  ├─ Master Bedroom          │                                 │
-│  │  │  ├─ Master Bath             │  ⊙ Kitchen Motion    [1 Rules]  │
-│  │  │  └─ Master Closet           │                                 │
-│  │  └─ Kids Wing                  │                                 │
+│  │  ├─ Primary Bedroom            │  INPUT TRIGGERS                 │
+│  │  ├─ Primary Bath               │  ⊙ Kitchen Motion    [1 Rules]  │
+│  │  ├─ Primary Closet             │                                 │
+│  │  └─ Kids Bedroom               │                                 │
 │  │                                │                                 │
 │  ├─ Basement                      │                                 │
 │  │                                │                                 │
@@ -128,33 +127,31 @@ The UI displays icons based on location type. These are **integration-layer conc
 
 ##### Base Type Icons
 
-| Type | Icon | MDI Name | Description |
-|------|------|----------|-------------|
-| Floor | ≡ | `mdi:layers` | A floor/level of the building |
-| Room | ◎ | `mdi:map-marker` | Generic room (fallback) |
-| Zone | ◇ | `mdi:vector-square` | Sub-room area |
-| Suite | ❖ | `mdi:home-group` | Room group (e.g., Master Suite) |
-| Outdoor | ⌂ | `mdi:home-outline` | Exterior location |
-| Building | ▣ | `mdi:warehouse` | Separate structure |
+| Type | MDI Icon | Description |
+|------|----------|-------------|
+| Floor | `mdi:layers` | A floor/level of the building |
+| Area | `mdi:map-marker` | Generic room or zone (fallback) |
+
+> **Note**: Home Assistant **zones** are geofences (e.g., home/office) and are **not shown** inside the indoor topology tree. Suites and sub-room zones are not modeled in this UI.
 
 ##### Room Category Icons (Semantic Enhancement)
 
 For better UX, the integration can infer room categories from names or allow explicit assignment:
 
-| Category | Icon | MDI Name | Example Rooms |
-|----------|------|----------|---------------|
-| Kitchen | 🍴 | `mdi:silverware-fork-knife` | Kitchen, Kitchenette |
-| Bedroom | 🛏️ | `mdi:bed` | Master Bedroom, Guest Room, Kids Room |
-| Bathroom | 🛁 | `mdi:shower` | Master Bath, Half Bath, Powder Room |
-| Living | 🛋️ | `mdi:sofa` | Living Room, Family Room, Den |
-| Dining | 🍽️ | `mdi:table-furniture` | Dining Room |
-| Office | 💼 | `mdi:desk` | Office, Study, Home Office |
-| Garage | 🚗 | `mdi:garage` | Garage, Carport |
-| Patio | 🌿 | `mdi:flower` | Patio, Deck, Porch |
-| Utility | ⚙️ | `mdi:washing-machine` | Laundry, Utility Room |
-| Storage | 📦 | `mdi:package-variant` | Closet, Pantry, Attic |
-| Gym | 🏋️ | `mdi:dumbbell` | Gym, Exercise Room |
-| Theater | 🎬 | `mdi:theater` | Media Room, Theater |
+| Category | MDI Icon | Example Rooms |
+|----------|----------|---------------|
+| Kitchen | `mdi:silverware-fork-knife` | Kitchen, Kitchenette |
+| Bedroom | `mdi:bed` | Master Bedroom, Guest Room, Kids Room |
+| Bathroom | `mdi:shower` | Master Bath, Half Bath, Powder Room |
+| Living | `mdi:sofa` | Living Room, Family Room, Den |
+| Dining | `mdi:table-furniture` | Dining Room |
+| Office | `mdi:desk` | Office, Study, Home Office |
+| Garage | `mdi:garage` | Garage, Carport |
+| Patio | `mdi:flower` | Patio, Deck, Porch |
+| Utility | `mdi:washing-machine` | Laundry, Utility Room |
+| Storage | `mdi:package-variant` | Closet, Pantry, Attic |
+| Gym | `mdi:dumbbell` | Gym, Exercise Room |
+| Theater | `mdi:theater` | Media Room, Theater |
 
 ##### Icon Resolution Strategy
 
@@ -168,17 +165,17 @@ The integration determines icons using this priority:
 # Integration icon resolution
 def get_location_icon(loc_mgr, location_id: str) -> str:
     meta = loc_mgr.get_module_config(location_id, "_meta") or {}
-    
+
     # 1. Explicit override
     if meta.get("icon"):
         return meta["icon"]
-    
+
     # 2. Category inference from name
     location = loc_mgr.get_location(location_id)
     category = infer_category(location.name)
     if category:
         return CATEGORY_ICONS[category]
-    
+
     # 3. Type fallback
     loc_type = meta.get("type", "room")
     return TYPE_ICONS.get(loc_type, "mdi:map-marker")
@@ -353,10 +350,10 @@ DOOR SENSOR PATTERN
 ─────────────────────────────────────────────────────────
 ○ Entry door (opening indicates entry)
   ON→TRIGGER(2m), OFF→ignore
-  
+
 ● State door (door state = occupancy state)
   ON→TRIGGER(∞), OFF→CLEAR(0)
-  
+
   ☐ Show advanced configuration
 ```
 
@@ -398,7 +395,7 @@ class Location:
     name: str                    # → node display text
     parent_id: Optional[str]     # → tree hierarchy
     is_explicit_root: bool       # → root vs unassigned styling
-    ha_area_id: Optional[str]    # → (future) HA area link indicator
+    ha_area_id: Optional[str]    # → Home Assistant area link (one per location)
     entity_ids: List[str]        # → triggers list in details
     modules: Dict[str, Dict]     # → module tab configurations
 ```
@@ -435,6 +432,16 @@ class Location:
 | Reorder locations | PATCH | `/api/home_topology/locations/reorder` |
 | Get location state | GET | `/api/home_topology/locations/{id}/state` |
 
+### 4.4 Home Assistant Linkage Rules
+
+- **One location = one HA area**: Every location created in the UI also creates (or links to) a Home Assistant Area; there are no “ghost” locations.
+- **No HA zones in-tree**: HA Zones are geofences (e.g., home/office) and are not rendered inside the indoor topology tree.
+- **Renames propagate both ways**: Renaming a linked location updates the HA area name; HA registry rename events update the location name (surface conflicts with a small “updated in HA” prompt).
+- **Deletes propagate**: Deleting a linked location deletes the HA area by default; the confirmation dialog states this clearly. Provide an “Unlink and keep in HA” option that moves the location to Inbox/unassigned and removes the link.
+- **Moves are integration-only**: HA has no hierarchy/order. Drag/reparent only affects the integration tree; when HA floors are supported, update the area’s `floor_id` when moving a room between floors.
+- **Origins tracked**: Store `origin: ha|integration` in `_meta` to know which areas the integration created vs. imported.
+- **Multiple roots supported**: `is_explicit_root` marks root-level nodes (House, Garage, Outdoor, Inbox).
+
 ---
 
 ## 5. Interaction Flows
@@ -445,11 +452,13 @@ class Location:
 1. User clicks [+ New Location]
 2. Dialog appears:
    - Name: [text input]
-   - Type: [dropdown: Floor/Room/Zone/Suite/Outdoor/Building]
+   - Type: [dropdown: Floor/Room/Outdoor/Building]
    - Parent: [dropdown: existing locations or "Root"]
 3. User fills form, clicks [Create]
 4. New location appears in tree, selected
 5. Details panel shows default module configs
+
+> Creating a location also creates (or links to) a Home Assistant Area; HA geofence Zones are not added to the tree.
 ```
 
 ### 5.2 Configure Occupancy
@@ -469,7 +478,7 @@ class Location:
 ```
 1. User hovers over location, drag handle appears
 2. User drags location
-3. Drop zones highlight:
+3. Drop targets highlight:
    - Between siblings (reorder)
    - Over parent node (reparent)
 4. User drops
@@ -483,15 +492,14 @@ While the core kernel is type-agnostic (any location can parent any other), the 
 ##### Location Type Hierarchy
 
 ```
-Building/Outdoor (root level only)
-    └── Floor
-            └── Room / Suite
-                    └── Zone (terminal, no children)
-
-Suite is a special case:
-    └── Suite
-            └── Room (e.g., Master Suite → Master Bedroom, Master Bath)
-                    └── Zone
+Root (multiple roots allowed: House, Garage, Outdoor)
+    ├── Building (optional root-level container)
+    │     └── Floor
+    │           └── Room
+    ├── Floor
+    │     └── Room
+    └── Outdoor (root-level)
+          └── Room (optional; terminal)
 ```
 
 ##### Valid Parent → Child Relationships
@@ -499,12 +507,10 @@ Suite is a special case:
 | Parent Type | Can Contain |
 |-------------|-------------|
 | **Root** | Floor, Building, Outdoor |
-| **Floor** | Room, Suite |
-| **Suite** | Room only |
-| **Room** | Zone only |
-| **Zone** | Nothing (terminal) |
 | **Building** | Floor, Room |
-| **Outdoor** | Zone only |
+| **Floor** | Room |
+| **Outdoor** | Room (optional) |
+| **Room** | Nothing (terminal) |
 
 ##### Illegal Moves (UI must block these)
 
@@ -512,12 +518,8 @@ Suite is a special case:
 |----------------|----------|--------|
 | Floor → Room | ❌ No | Floors contain rooms, not vice versa |
 | Floor → Floor | ❌ No | Floors are siblings, not nested |
-| Room → Room | ❌ No | Rooms are flat within a floor (use Suite for grouping) |
-| Room → Zone | ❌ No | Zones are sub-divisions, cannot contain rooms |
-| Zone → anything | ❌ No | Zones are terminal nodes |
-| Suite → Floor | ❌ No | Suites exist within floors |
-| Room → Suite | ✅ Yes | Suites can contain rooms (Master Suite → Bedroom) |
-| Zone → Room | ✅ Yes | Zones belong inside rooms |
+| Room → Room | ❌ No | Rooms are terminal in this UI |
+| Room → Floor | ❌ No | Rooms cannot contain floors |
 | Outdoor → Building | ❌ No | These are both root-level |
 | Anything → itself | ❌ No | Cannot be own parent |
 | Parent → descendant | ❌ No | Cannot create cycles |
@@ -534,8 +536,7 @@ Suite is a special case:
 ##### Edge Cases
 
 1. **Converting types**: If user changes a Room to a Floor, check if current parent is valid. If not, prompt to move first.
-2. **Orphaned children**: If a Suite is deleted, its child Rooms become children of the Suite's parent Floor.
-3. **Root demotion**: Cannot drag a Floor into another Floor. Must create hierarchy properly.
+2. **Root demotion**: Cannot drag a Floor into another Floor. Keep floors as peers.
 
 > **Note**: These constraints are UI-enforced. The core `LocationManager` accepts any valid tree structure. This allows power users to bypass via API if needed, while the UI guides normal users toward sensible hierarchies.
 
@@ -564,7 +565,7 @@ meta = loc_mgr.get_module_config(location_id, "_meta") or {}
 location_type = meta.get("type", "room")
 ```
 
-> **See also**: 
+> **See also**:
 > - Section 3.1.3 above for icon resolution strategy
 > - [Integration Guide](./integration-guide.md#location-types-your-responsibility) for complete implementation patterns
 
@@ -738,7 +739,7 @@ export class HtLocationTree extends LitElement {
   @property({ attribute: false }) locations!: Location[];
   @property() selectedId?: string;
   @property({ attribute: false }) expandedIds: Set<string> = new Set();
-  
+
   // Events
   // - location-selected: { locationId: string }
   // - location-moved: { locationId: string, newParentId: string | null, newIndex: number }
@@ -761,7 +762,7 @@ export class HtLocationInspector extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) location?: Location;
   @property() activeTab: 'occupancy' | 'actions' = 'occupancy';
-  
+
   // Events
   // - config-changed: { locationId: string, module: string, config: object }
 }
@@ -781,7 +782,7 @@ export class HtEntityConfigDialog extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
   @property({ attribute: false }) entity?: EntityConfig;
   @property({ type: Boolean }) open = false;
-  
+
   // Events
   // - config-saved: { entityId: string, config: OccupancySourceConfig }
   // - dialog-closed
@@ -837,7 +838,7 @@ hass.callWS({ type: 'home_topology/locations/list' })
   → { locations: Location[] }
 
 // Create location
-hass.callWS({ 
+hass.callWS({
   type: 'home_topology/locations/create',
   name: 'Kitchen',
   parent_id: 'floor-1',
@@ -961,7 +962,7 @@ firstUpdated() {
 
 ---
 
-**Status**: Design Complete (Implementation Ready)  
-**Owner**: Mike  
+**Status**: Design Complete (Implementation Ready)
+**Owner**: Mike
 **Next Step**: Create `home-topology-ha` repository and scaffold integration
 

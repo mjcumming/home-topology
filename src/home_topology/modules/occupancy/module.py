@@ -218,12 +218,14 @@ class OccupancyModule(LocationModule):
             if old_state == "off" and new_state == "on":
                 return EventType.TRIGGER, 120  # 2 minutes
 
-        # Media player: playing = HOLD, not playing = RELEASE
+        # Media player: playing = EXTEND (only keeps area occupied if already is)
         if "media_player" in entity_id.lower():
             if old_state != "playing" and new_state == "playing":
-                return EventType.HOLD, None  # No timeout for HOLD
+                # Extend occupancy for 2 hours while playing, but don't trigger if vacant
+                return EventType.EXTEND, 7200
             elif old_state == "playing" and new_state != "playing":
-                return EventType.RELEASE, 300  # 5 min trailing timeout
+                # When media stops, we just let the timer expire normally
+                return None, None
 
         return None, None
 
@@ -423,6 +425,31 @@ class OccupancyModule(LocationModule):
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.TRIGGER,
+            source_id=source_id,
+            timestamp=now,
+            timeout=timeout,
+        )
+        result = self._engine.handle_event(event, now)
+        for transition in result.transitions:
+            self._emit_occupancy_changed(transition)
+
+    def extend(
+        self,
+        location_id: str,
+        source_id: str,
+        timeout: Optional[int] = None,
+        now: Optional[datetime] = None,
+    ) -> None:
+        """Send an EXTEND event (activity detected).
+
+        Extends timer ONLY if already occupied. Does NOT trigger occupancy if vacant.
+        """
+        assert self._engine is not None
+        if now is None:
+            now = datetime.now(UTC)
+        event = OccupancyEvent(
+            location_id=location_id,
+            event_type=EventType.EXTEND,
             source_id=source_id,
             timestamp=now,
             timeout=timeout,

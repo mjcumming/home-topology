@@ -325,15 +325,18 @@ class OccupancyEngine:
                 next_timer_remaining = None
                 _LOGGER.info(f"  {location_id}: VACATED by {event.source_id}")
 
-            # 4. Timer Logic (TRIGGER and RELEASE)
-            elif event.event_type == EventType.TRIGGER:
-                timeout_seconds = self._get_timeout(event, config)
-                timeout_delta = timedelta(seconds=timeout_seconds)
-                calculated_expiry = now + timeout_delta
+            # 4. Timer Logic (TRIGGER, EXTEND and RELEASE)
+            elif event.event_type in (EventType.TRIGGER, EventType.EXTEND):
+                if event.event_type == EventType.EXTEND and not current_state.is_occupied:
+                    _LOGGER.debug(f"  {location_id}: EXTEND ignored (currently vacant)")
+                else:
+                    timeout_seconds = self._get_timeout(event, config)
+                    timeout_delta = timedelta(seconds=timeout_seconds)
+                    calculated_expiry = now + timeout_delta
 
-                # Always extend timer (even during holds - preserved for later)
-                if next_occupied_until is None or calculated_expiry > next_occupied_until:
-                    next_occupied_until = calculated_expiry
+                    # Always extend timer (even during holds - preserved for later)
+                    if next_occupied_until is None or calculated_expiry > next_occupied_until:
+                        next_occupied_until = calculated_expiry
 
             elif event.event_type == EventType.RELEASE:
                 # When LAST hold drops, check existing timer vs trailing timer

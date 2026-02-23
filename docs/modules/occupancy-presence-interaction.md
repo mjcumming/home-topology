@@ -1,7 +1,7 @@
 # OccupancyModule and PresenceModule Interaction
 
-**Version**: 1.0  
-**Date**: 2025.12.09  
+**Version**: 1.0
+**Date**: 2025.12.09
 **Status**: Design Reference
 
 ---
@@ -20,11 +20,11 @@ This document explains how OccupancyModule and PresenceModule work together to p
 
 **Purpose**: Detect when a location is occupied or vacant
 
-**Sources**: 
+**Sources**:
 - Motion sensors (immediate)
 - Door sensors (entry detection)
 - Presence sensors (mmWave, radar)
-- Media players (playing = occupied)
+- Media players (playing = extends existing occupancy)
 
 **State**: Binary (True/False)
 - No confidence scoring
@@ -104,7 +104,7 @@ T+2.5s: ActionsModule receives presence.changed
   → Rule "if mike in office, apply warm scene" executes
   → ✅ Mike's scene applies (overrides generic lights)
 
-Result: 
+Result:
 - Instant response (lights on)
 - Personalized 2.5s later (Mike's scene)
 - No artificial delays
@@ -207,12 +207,12 @@ automation:
     action:
       # Wait 5 seconds to see if we identify the person
       - delay: 5
-      
+
       # Query presence module
       - variables:
           mike_present: >
             {{ 'mike' in state_attr('sensor.office_presence', 'people') }}
-      
+
       # Conditional action
       - if: "{{ mike_present }}"
         then:
@@ -379,7 +379,7 @@ automation:
       - service: scene.turn_on
         target:
           entity_id: scene.office_mike_warm
-  
+
   - alias: "Office Lights - Sarah"
     trigger:
       - platform: event
@@ -393,7 +393,7 @@ automation:
           entity_id: scene.office_sarah_bright
 ```
 
-**Result**: 
+**Result**:
 - Lights on immediately
 - Personalized scene 2-5 seconds later
 
@@ -477,13 +477,13 @@ ActionsModule can use:
 
 **No coordination needed** - modules are independent, user chooses patterns.
 
-**90% of automations** only need occupancy.  
-**10% of automations** use presence for personalization.  
+**90% of automations** only need occupancy.
+**10% of automations** use presence for personalization.
 **5% of automations** use both for advanced logic.
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: 2025.12.09  
+**Document Version**: 1.0
+**Last Updated**: 2025.12.09
 **Status**: Active
 

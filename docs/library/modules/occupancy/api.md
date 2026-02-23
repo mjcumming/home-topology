@@ -1,7 +1,7 @@
 # Occupancy Module - API Reference
 
-**Status**: v3.0  
-**Date**: 2025-11-26  
+**Status**: v3.0
+**Date**: 2025-11-26
 **Approach**: Integration-Layer Event Classification with Per-Source Tracking
 
 ---
@@ -150,23 +150,23 @@ module.clear(
 
 **Key insight**: `timeout=None` means "indefinite until CLEAR is called". The door closing triggers CLEAR, so no timeout is needed.
 
-### Media Players
+### Media Players (Extend-Only)
+
+Media players are often "noisy" sources that can report playing states during background updates or syncs. To prevent false occupancy triggers, use the `extend` method.
 
 ```python
 # media_player.living_room_tv → playing
-module.trigger(
+module.extend(
     location_id="living_room",
     source_id="media_player.living_room_tv",
-    timeout=None,  # Indefinite while playing
+    timeout=7200,  # 2 hours
 )
 
 # media_player.living_room_tv → idle/off
-module.clear(
-    location_id="living_room",
-    source_id="media_player.living_room_tv",
-    trailing_timeout=300,  # 5 min after TV off
-)
+# No action needed - extension will naturally expire
 ```
+
+**Key Benefit**: If the room is vacant, `extend` is ignored. If the room is already occupied (e.g., via motion), playing media will keep it occupied for the duration, even if motion stops.
 
 ### Light Switches (Optional - Force Vacant)
 
@@ -212,26 +212,26 @@ class MyPlatformOccupancyIntegration:
     def __init__(self, occupancy_module, location_manager):
         self.module = occupancy_module
         self.loc_manager = location_manager
-        
+
     def on_entity_state_change(self, entity_id, old_state, new_state):
         """Platform calls this when entity state changes."""
-        
+
         # 1. Find which location this entity belongs to
         location_id = self.loc_manager.get_location_for_entity(entity_id)
         if not location_id:
             return  # Entity not mapped to a location
-        
+
         # 2. Get entity configuration
         config = self.get_entity_config(entity_id)
         if not config:
             return  # Entity not configured as occupancy source
-            
+
         # 3. Classify and send event
         self._process_state_change(entity_id, old_state, new_state, location_id, config)
-        
+
     def _process_state_change(self, entity_id, old_state, new_state, location_id, config):
         """Map entity state change to occupancy event."""
-        
+
         # Motion sensor: off → on = TRIGGER with timeout
         if config["type"] == "motion" and new_state == "on":
             self.module.trigger(
@@ -239,7 +239,7 @@ class MyPlatformOccupancyIntegration:
                 source_id=entity_id,
                 timeout=config.get("timeout", 300),
             )
-            
+
         # Presence sensor: off → on = TRIGGER indefinite
         elif config["type"] == "presence" and new_state == "on":
             self.module.trigger(
@@ -247,7 +247,7 @@ class MyPlatformOccupancyIntegration:
                 source_id=entity_id,
                 timeout=None,  # Indefinite
             )
-            
+
         # Presence sensor: on → off = CLEAR with trailing
         elif config["type"] == "presence" and new_state == "off":
             self.module.clear(
@@ -403,11 +403,11 @@ def on_occupancy_changed(event):
     location_id = event.location_id
     occupied = event.payload["occupied"]
     contributions = event.payload["contributions"]
-    
+
     if occupied:
         # Turn on lights, adjust climate, etc.
         turn_on_lights(location_id)
-        
+
         # Log what's keeping it occupied
         for c in contributions:
             print(f"  {c['source_id']}: expires {c['expires_at'] or 'indefinite'}")
@@ -515,14 +515,14 @@ def test_motion_triggers_occupancy():
     # Arrange
     integration = MyIntegration(module, loc_manager)
     now = datetime(2025, 1, 27, 12, 0, 0)
-    
+
     # Act
     integration.on_entity_state_change(
         "binary_sensor.kitchen_motion",
         old_state="off",
         new_state="on",
     )
-    
+
     # Assert
     state = module.get_state("kitchen")
     assert state.is_occupied == True
@@ -534,19 +534,19 @@ def test_motion_triggers_occupancy():
 def test_presence_with_motion_coverage_gap():
     """Test that motion sensor contribution survives presence sensor clearing."""
     now = datetime(2025, 1, 27, 12, 0, 0)
-    
+
     # Presence sensor ON (indefinite)
     module.trigger("office", "presence", timeout=None)
-    
+
     # Motion sensor triggers (10 min)
     module.trigger("office", "motion", timeout=600)
-    
+
     # Presence clears with 2 min trailing
     module.clear("office", "presence", trailing_timeout=120)
-    
+
     # After 3 minutes, presence has expired but motion still active
     module.check_timeouts(now + timedelta(minutes=3))
-    
+
     state = module.get_state("office")
     assert state.is_occupied == True  # Motion still contributing!
     assert len(state.contributions) == 1
@@ -580,6 +580,6 @@ def test_presence_with_motion_coverage_gap():
 
 ---
 
-**Status**: v3.0 ✅  
+**Status**: v3.0 ✅
 **Last Updated**: 2025-11-26
 
