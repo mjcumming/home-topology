@@ -260,6 +260,47 @@ Event normalization happens in the integration layer. Core library expects norma
 
 ---
 
+### ADR-011: LocationManager Mutation Event Emission (2026-02-23)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+Adapters need reliable topology mutation events for rename, reparent, delete,
+and ordering synchronization. Emitting these events in adapters duplicates logic
+and creates inconsistent behavior between integrations.
+
+**Decision**:
+`LocationManager` emits mutation events (`location.created`, `location.renamed`,
+`location.parent_changed`, `location.deleted`, `location.reordered`) when an
+event bus is attached via `set_event_bus()`.
+
+**Consequences**:
+- ✅ Core becomes the canonical source of topology mutation events
+- ✅ Adapters remain thinner and more consistent
+- ⚠️ Event emission is optional and depends on `set_event_bus()` wiring
+
+---
+
+### ADR-012: Canonical Sibling Ordering in Core Model (2026-02-23)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+Tree-based UIs require stable sibling ordering across restarts and sync cycles.
+Implicit ordering (insertion/order-by-name) is not sufficient for drag/drop
+workflows.
+
+**Decision**:
+Add `Location.order` as canonical sibling ordering state and provide
+`LocationManager.reorder_location()` to apply indexed reorder operations.
+
+**Consequences**:
+- ✅ Stable, persisted ordering semantics for all adapters
+- ✅ Deterministic tree rendering and sync behavior
+- ⚠️ Callers must preserve `order` in persistence layers
+
+---
+
 ### ADR-011: Actions Module "Generator" Pattern (2025-11-24)
 
 **Status**: ✅ APPROVED
@@ -841,4 +882,3 @@ What did we decide to do?
 **Maintainer**: Project team  
 **Review Frequency**: As decisions are made  
 **Location**: `/docs/adr-log.md`
-

@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Core Topology Events and Ordering (2026.02.23)
+- **Location mutation events from core**: `LocationManager` now emits topology
+  events when attached to an event bus via `set_event_bus()`:
+  - `location.created`
+  - `location.renamed`
+  - `location.parent_changed`
+  - `location.deleted`
+  - `location.reordered`
+- **Canonical sibling ordering**:
+  - New `Location.order` field for persisted sibling order
+  - `children_of()` now returns siblings sorted by canonical order
+  - New `reorder_location(location_id, new_parent_id, new_index)` API
+- **Coverage**: Added dedicated tests for mutation events and reorder behavior
+  in `tests/test_location_events.py`
+
 #### LocationManager CRUD Operations (2025.01.27)
 - **`update_location()` method**: Update location properties (name, parent, aliases, ha_area_id, is_explicit_root)
   - Validates parent exists
@@ -352,4 +367,3 @@ If a release includes breaking changes, add a section:
 **Notes**:
 - Pre-1.0.0 releases may include breaking changes in minor versions
 - After 1.0.0, breaking changes only in major versions (SemVer)
-

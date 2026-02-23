@@ -87,6 +87,7 @@ class Location:
     entity_ids: List[str]            # Platform entities in this location
     modules: Dict[str, Dict]         # Per-module config blobs
     aliases: List[str]               # Alternative names (for voice assistants)
+    order: int                       # Canonical sibling order (0..N per parent)
 ```
 
 **Aliases**: Alternative names for a location, used by voice assistants (Google Assistant, Alexa, HA Assist). Example: A location named "Living Room" might have aliases `["Lounge", "TV Room", "Front Room"]`.
@@ -191,6 +192,7 @@ It provides:
 - ✅ Hierarchy queries: `parent_of`, `children_of`, `ancestors_of`, `descendants_of`
 - ✅ Entity-to-location mapping
 - ✅ Per-location module configuration storage
+- ✅ Optional topology mutation event emission when attached to EventBus
 
 ### 4.2 Key Methods
 
@@ -203,10 +205,11 @@ class LocationManager:
     def all_locations() -> List[Location]
     def update_location(location_id: str, name: Optional[str] = None, ...) -> Location
     def delete_location(location_id: str, cascade: bool = False, orphan_children: bool = False) -> List[str]
+    def reorder_location(location_id: str, new_parent_id: Optional[str], new_index: int) -> Location
     
     # Hierarchy queries
     def parent_of(location_id: str) -> Optional[Location]
-    def children_of(location_id: str) -> List[Location]
+    def children_of(location_id: str) -> List[Location]  # sorted by `Location.order`
     def ancestors_of(location_id: str) -> List[Location]
     def descendants_of(location_id: str) -> List[Location]
     
@@ -929,4 +932,3 @@ Host platform (HA) could manage multiple kernel instances.
 
 **Document Status**: Active  
 **Last Updated**: 2025.12.09
-

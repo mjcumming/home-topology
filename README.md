@@ -54,6 +54,9 @@ Your storage room doesn't need a motion sensor. Turn on the light → room is oc
 
 - 🔁 **Location-aware Event Bus**  
   Simple, synchronous event pipeline with filters for type / location / ancestors / descendants.
+  Location mutations can publish core events (`location.created`,
+  `location.renamed`, `location.parent_changed`, `location.deleted`,
+  `location.reordered`) when `LocationManager` is attached to an event bus.
 
 - 🧩 **Schema-driven configuration**  
   Each module exposes a config schema; UIs can render dynamic forms per location without custom frontend code.
@@ -106,6 +109,7 @@ Responsibilities:
 
 * Store the location tree.
 * Provide graph queries: `parent_of`, `children_of`, `ancestors_of`, `descendants_of`.
+* Maintain canonical sibling ordering (`Location.order`) and indexed reorder operations.
 * Maintain entity → location mappings.
 * Store per-location module config:
 

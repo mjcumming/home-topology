@@ -4,7 +4,8 @@ LocationManager for topology and configuration management.
 The LocationManager owns the topology and config, not the behavior.
 """
 
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 import logging
 
 from home_topology.core.location import Location
@@ -29,6 +30,34 @@ class LocationManager:
         """Initialize an empty location manager."""
         self._locations: Dict[str, Location] = {}
         self._entity_to_location: Dict[str, str] = {}
+        self._event_bus: Any | None = None
+
+    def set_event_bus(self, event_bus: Any) -> None:
+        """Attach an optional event bus for topology mutation events."""
+        self._event_bus = event_bus
+
+    def _emit_event(
+        self,
+        event_type: str,
+        location_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Emit a topology domain event when an event bus is configured."""
+        if self._event_bus is None:
+            return
+
+        # Import lazily to avoid circular imports at module load time.
+        from home_topology.core.bus import Event
+
+        self._event_bus.publish(
+            Event(
+                type=event_type,
+                source="topology",
+                location_id=location_id,
+                payload=payload or {},
+                timestamp=datetime.now(UTC),
+            )
+        )
 
     def create_location(
         self,
@@ -38,6 +67,7 @@ class LocationManager:
         is_explicit_root: bool = False,
         ha_area_id: Optional[str] = None,
         aliases: Optional[List[str]] = None,
+        order: Optional[int] = None,
     ) -> Location:
         """
         Create a new location in the topology.
@@ -52,6 +82,7 @@ class LocationManager:
                 - is_explicit_root=False: Shows in Inbox (unassigned)
             ha_area_id: Optional Home Assistant area ID
             aliases: Alternative names for this location (for voice assistants)
+            order: Optional sibling order index (defaults to append)
 
         Returns:
             The created Location
@@ -65,6 +96,11 @@ class LocationManager:
         if parent_id and parent_id not in self._locations:
             raise ValueError(f"Parent location '{parent_id}' does not exist")
 
+        if order is None:
+            order = self._next_sibling_order(parent_id)
+        else:
+            self._insert_sibling_slot(parent_id, order)
+
         location = Location(
             id=id,
             name=name,
@@ -72,10 +108,22 @@ class LocationManager:
             is_explicit_root=is_explicit_root,
             ha_area_id=ha_area_id,
             aliases=aliases or [],
+            order=order,
         )
 
         self._locations[id] = location
         logger.info(f"Created location: {id} ({name})")
+        self._emit_event(
+            "location.created",
+            id,
+            {
+                "name": name,
+                "parent_id": parent_id,
+                "is_explicit_root": is_explicit_root,
+                "ha_area_id": ha_area_id,
+                "order": order,
+            },
+        )
 
         return location
 
@@ -178,7 +226,8 @@ class LocationManager:
         Returns:
             List of child Locations
         """
-        return [loc for loc in self._locations.values() if loc.parent_id == location_id]
+        children = [loc for loc in self._locations.values() if loc.parent_id == location_id]
+        return sorted(children, key=lambda loc: (loc.order, loc.name))
 
     def ancestors_of(self, location_id: str) -> List[Location]:
         """
@@ -484,6 +533,7 @@ class LocationManager:
         is_explicit_root: Optional[bool] = None,
         ha_area_id: Optional[str] = None,
         aliases: Optional[List[str]] = None,
+        order: Optional[int] = None,
     ) -> Location:
         """
         Update a location's properties.
@@ -495,6 +545,7 @@ class LocationManager:
             is_explicit_root: New explicit root flag (None to keep current)
             ha_area_id: New HA area ID (None to keep current, use empty string to clear)
             aliases: New aliases list (None to keep current)
+            order: New sibling order (None to keep current or append on parent move)
 
         Returns:
             The updated Location
@@ -507,6 +558,10 @@ class LocationManager:
         location = self.get_location(location_id)
         if not location:
             raise ValueError(f"Location '{location_id}' does not exist")
+
+        old_name = location.name
+        old_parent_id = location.parent_id
+        old_order = location.order
 
         # Update name
         if name is not None:
@@ -526,7 +581,7 @@ class LocationManager:
             # Check for cycles (new parent is a descendant)
             if parent_id:
                 if parent_id == location_id:
-                    raise ValueError(f"Location cannot be its own parent")
+                    raise ValueError("Location cannot be its own parent")
                 descendants = self.descendants_of(location_id)
                 if any(d.id == parent_id for d in descendants):
                     raise ValueError(
@@ -535,6 +590,7 @@ class LocationManager:
                     )
 
             location.parent_id = parent_id
+            location.order = self._next_sibling_order(parent_id)
             logger.debug(f"Updated parent for {location_id}: {parent_id}")
 
         # Update explicit root flag
@@ -553,7 +609,103 @@ class LocationManager:
             location.aliases = aliases.copy()
             logger.debug(f"Updated aliases for {location_id}: {aliases}")
 
+        if order is not None:
+            self._set_location_order(location, order)
+        else:
+            self._normalize_sibling_orders(location.parent_id)
+
+        if old_parent_id != location.parent_id:
+            self._normalize_sibling_orders(old_parent_id)
+
         logger.info(f"Updated location: {location_id}")
+        if location.name != old_name:
+            self._emit_event(
+                "location.renamed",
+                location_id,
+                {
+                    "old_name": old_name,
+                    "new_name": location.name,
+                },
+            )
+
+        if location.parent_id != old_parent_id:
+            self._emit_event(
+                "location.parent_changed",
+                location_id,
+                {
+                    "old_parent_id": old_parent_id,
+                    "new_parent_id": location.parent_id,
+                    "old_order": old_order,
+                    "new_order": location.order,
+                },
+            )
+        return location
+
+    def reorder_location(
+        self,
+        location_id: str,
+        new_parent_id: Optional[str],
+        new_index: int,
+    ) -> Location:
+        """Move/reorder a location among siblings."""
+        location = self.get_location(location_id)
+        if not location:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        if new_parent_id == "":
+            new_parent_id = None
+
+        if new_parent_id and new_parent_id not in self._locations:
+            raise ValueError(f"Parent location '{new_parent_id}' does not exist")
+
+        if new_parent_id == location_id:
+            raise ValueError("Location cannot be its own parent")
+
+        old_parent_id = location.parent_id
+        if new_parent_id:
+            descendants = self.descendants_of(location_id)
+            if any(desc.id == new_parent_id for desc in descendants):
+                raise ValueError(
+                    f"Cannot set parent '{new_parent_id}': would create cycle "
+                    f"(location is ancestor of new parent)"
+                )
+
+        if old_parent_id != new_parent_id:
+            location.parent_id = new_parent_id
+
+        siblings = [
+            sibling
+            for sibling in self._locations.values()
+            if sibling.parent_id == new_parent_id and sibling.id != location_id
+        ]
+        siblings = sorted(siblings, key=lambda sibling: (sibling.order, sibling.name))
+
+        insert_at = max(0, min(new_index, len(siblings)))
+        siblings.insert(insert_at, location)
+        for idx, sibling in enumerate(siblings):
+            sibling.order = idx
+
+        if old_parent_id != new_parent_id:
+            self._normalize_sibling_orders(old_parent_id)
+            self._emit_event(
+                "location.parent_changed",
+                location_id,
+                {
+                    "old_parent_id": old_parent_id,
+                    "new_parent_id": new_parent_id,
+                    "new_order": location.order,
+                },
+            )
+
+        self._emit_event(
+            "location.reordered",
+            location_id,
+            {
+                "parent_id": location.parent_id,
+                "order": location.order,
+                "index": insert_at,
+            },
+        )
         return location
 
     def delete_location(
@@ -627,7 +779,50 @@ class LocationManager:
                 logger.debug(f"Unmapped entity {entity_id} from deleted location {location_id}")
 
         # Delete location
+        metadata = dict(location.modules.get("_meta", {}))
         del self._locations[location_id]
         logger.info(f"Deleted location: {location_id} ({location.name})")
+        self._emit_event(
+            "location.deleted",
+            location_id,
+            {"metadata": metadata},
+        )
+        self._normalize_sibling_orders(location.parent_id)
 
         return [location_id]
+
+    def _next_sibling_order(self, parent_id: Optional[str]) -> int:
+        """Get the next order index for a sibling group."""
+        siblings = [loc for loc in self._locations.values() if loc.parent_id == parent_id]
+        if not siblings:
+            return 0
+        return max(loc.order for loc in siblings) + 1
+
+    def _normalize_sibling_orders(self, parent_id: Optional[str]) -> None:
+        """Compact sibling order indexes to contiguous 0..N-1 values."""
+        siblings = [loc for loc in self._locations.values() if loc.parent_id == parent_id]
+        siblings = sorted(siblings, key=lambda loc: (loc.order, loc.name))
+        for idx, sibling in enumerate(siblings):
+            sibling.order = idx
+
+    def _insert_sibling_slot(self, parent_id: Optional[str], index: int) -> None:
+        """Create an insertion slot by shifting siblings at/after index."""
+        siblings = [loc for loc in self._locations.values() if loc.parent_id == parent_id]
+        siblings = sorted(siblings, key=lambda loc: (loc.order, loc.name))
+        insert_at = max(0, min(index, len(siblings)))
+        for idx, sibling in enumerate(siblings):
+            sibling.order = idx + (1 if idx >= insert_at else 0)
+
+    def _set_location_order(self, location: Location, index: int) -> None:
+        """Set order for a location within its parent siblings."""
+        siblings = [
+            sibling
+            for sibling in self._locations.values()
+            if sibling.parent_id == location.parent_id and sibling.id != location.id
+        ]
+        siblings = sorted(siblings, key=lambda sibling: (sibling.order, sibling.name))
+
+        insert_at = max(0, min(index, len(siblings)))
+        siblings.insert(insert_at, location)
+        for idx, sibling in enumerate(siblings):
+            sibling.order = idx

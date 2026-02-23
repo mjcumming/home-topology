@@ -25,6 +25,7 @@ class Location:
         entity_ids: Platform entity IDs mapped to this location
         modules: Per-module configuration blobs
         aliases: Alternative names for this location (used by voice assistants)
+        order: Sibling ordering index (lower values appear first in tree views)
     """
 
     id: str
@@ -35,3 +36,4 @@ class Location:
     entity_ids: List[str] = field(default_factory=list)
     modules: Dict[str, Dict] = field(default_factory=dict)
     aliases: List[str] = field(default_factory=list)
+    order: int = 0
