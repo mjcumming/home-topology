@@ -66,6 +66,15 @@ Your integration sends these events to the core:
 | `UNLOCK` | Unfreeze state | `unlock(location_id, source_id)` |
 | `UNLOCK_ALL` | Force unlock all | `unlock_all(location_id)` |
 
+### Timeout Validation
+
+Public API methods validate timeout inputs strictly:
+
+- `timeout` and `trailing_timeout` must be integers (seconds)
+- values must be `>= 0`
+- `None` is allowed where semantic (`trigger(..., timeout=None)`)
+- invalid values raise `ValueError`
+
 ---
 
 ## Event Classification Examples
@@ -150,23 +159,27 @@ module.clear(
 
 **Key insight**: `timeout=None` means "indefinite until CLEAR is called". The door closing triggers CLEAR, so no timeout is needed.
 
-### Media Players (Extend-Only)
+### Media Players
 
-Media players are often "noisy" sources that can report playing states during background updates or syncs. To prevent false occupancy triggers, use the `extend` method.
+Media players are often "noisy" sources that can report state changes during sync/background updates. In v3, use normal `TRIGGER`/`CLEAR` mapping with conservative timeouts.
 
 ```python
 # media_player.living_room_tv → playing
-module.extend(
+module.trigger(
     location_id="living_room",
     source_id="media_player.living_room_tv",
     timeout=7200,  # 2 hours
 )
 
 # media_player.living_room_tv → idle/off
-# No action needed - extension will naturally expire
+module.clear(
+    location_id="living_room",
+    source_id="media_player.living_room_tv",
+    trailing_timeout=300,  # optional trailing
+)
 ```
 
-**Key Benefit**: If the room is vacant, `extend` is ignored. If the room is already occupied (e.g., via motion), playing media will keep it occupied for the duration, even if motion stops.
+**Guideline**: If false positives are common, lower timeout and/or require another corroborating source in your integration logic.
 
 ### Light Switches (Optional - Force Vacant)
 
@@ -576,10 +589,9 @@ def test_presence_with_motion_coverage_gap():
 - **Design Document**: `design.md`
 - **Design Decisions**: `design-decisions.md`
 - **Implementation Status**: `implementation-status.md`
-- **UI Design**: `../../../integration/ui-design.md`
+- **UI Design**: integration adapter repository (HA-specific implementation)
 
 ---
 
 **Status**: v3.0 ✅
 **Last Updated**: 2025-11-26
-

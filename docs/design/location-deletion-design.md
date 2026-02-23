@@ -10,7 +10,7 @@
 
 - ❌ **No `delete_location()` method exists** in `LocationManager`
 - ⚠️ **TODO in websocket API**: `handle_locations_delete()` needs implementation
-- 📝 **Service example exists** in `ha-sync-services.md` but accesses private `_locations` attribute
+- 📝 **Service example moved** to the integration adapter docs (previously `docs/integration/ha-sync-services.md`)
 - 🎯 **UI expects deletion**: Delete button exists in UI design docs
 
 ---
@@ -523,4 +523,3 @@ This provides:
 **Document Version**: 1.0  
 **Status**: Design Discussion  
 **Next Steps**: Review and implement
-

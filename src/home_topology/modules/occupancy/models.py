@@ -1,42 +1,27 @@
-"""Data models for the occupancy module.
-
-This module defines the core data structures used throughout the occupancy system.
-All state classes are frozen (immutable) to support functional programming.
-
-v2.3 Changes:
-- Removed active_occupants (identity tracking deferred to PresenceModule)
-- Added timer_remaining for lock suspension/resume
-- Removed occupant_id from OccupancyEvent
-
-Licensed under MIT License
-"""
+"""Data models for the occupancy module (v3.0)."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import FrozenSet
 
+# Stable reason patterns emitted by the occupancy engine.
+# - event:<event_type>
+# - propagation:child:<child_location_id>
+# - propagation:parent
+# - timeout
+REASON_EVENT_PREFIX = "event:"
+REASON_PROPAGATION_CHILD_PREFIX = "propagation:child:"
+REASON_PROPAGATION_PARENT = "propagation:parent"
+REASON_TIMEOUT = "timeout"
+
 
 class EventType(Enum):
-    """The type of occupancy signal.
-
-    Events (from device state changes via integration):
-        TRIGGER: Activity detected → occupied + timer
-        HOLD: Presence detected → occupied indefinitely
-        RELEASE: Presence cleared → uses existing timer or starts trailing timer
-
-    Commands (from automations/UI):
-        VACATE: Force vacant immediately
-        LOCK: Add source to locked_by set (freeze state)
-        UNLOCK: Remove source from locked_by set
-        UNLOCK_ALL: Clear all locks (force unlock)
-    """
+    """The type of occupancy signal."""
 
     # Events (from device mappings)
-    TRIGGER = "trigger"  # Activity detected → occupied + timer
-    EXTEND = "extend"  # Activity detected → extends existing timer (no trigger if vacant)
-    HOLD = "hold"  # Presence detected → occupied indefinitely
-    RELEASE = "release"  # Presence cleared → check timer or start trailing
+    TRIGGER = "trigger"  # Source contributes occupancy (timed or indefinite)
+    CLEAR = "clear"  # Source stops contributing (immediate or trailing)
 
     # Commands (from automations/UI)
     VACATE = "vacate"  # Force vacant immediately
@@ -54,42 +39,39 @@ class OccupancyStrategy(Enum):
 
 @dataclass(frozen=True)
 class LocationConfig:
-    """Configuration for a location.
-
-    Attributes:
-        id: Unique identifier.
-        parent_id: Optional container location ID.
-        occupancy_strategy: Strategy logic.
-        contributes_to_parent: If False, occupancy stops here.
-        default_timeout: Seconds for TRIGGER events (default: 300).
-        hold_release_timeout: Trailing seconds after RELEASE (default: 120).
-    """
+    """Configuration for a location."""
 
     id: str
     parent_id: str | None = None
     occupancy_strategy: OccupancyStrategy = OccupancyStrategy.INDEPENDENT
     contributes_to_parent: bool = True
     default_timeout: int = 300  # 5 minutes for TRIGGER events
-    hold_release_timeout: int = 120  # 2 minutes after RELEASE
+    default_trailing_timeout: int = 120  # 2 minutes for CLEAR events
+
+
+@dataclass(frozen=True)
+class SourceContribution:
+    """A source's contribution to occupancy."""
+
+    source_id: str
+    expires_at: datetime | None  # None = indefinite
+
+
+@dataclass(frozen=True)
+class SuspendedContribution:
+    """A contribution suspended while locked."""
+
+    source_id: str
+    remaining: timedelta | None  # None = indefinite
 
 
 @dataclass(frozen=True)
 class LocationRuntimeState:
-    """Runtime state for a location (Immutable).
-
-    Attributes:
-        is_occupied: Whether the location is currently occupied.
-        occupied_until: Timer expiration (None = indefinite hold or vacant).
-        timer_remaining: Remaining time when locked (for suspend/resume).
-        active_holds: Source IDs with active holds.
-        locked_by: Set of source IDs that have locked this location.
-                   Location is locked when this set is non-empty.
-    """
+    """Runtime state for a location (immutable)."""
 
     is_occupied: bool = False
-    occupied_until: datetime | None = None
-    timer_remaining: timedelta | None = None  # Stored when locked for resume
-    active_holds: FrozenSet[str] = field(default_factory=frozenset)
+    contributions: FrozenSet[SourceContribution] = field(default_factory=frozenset)
+    suspended_contributions: FrozenSet[SuspendedContribution] = field(default_factory=frozenset)
     locked_by: FrozenSet[str] = field(default_factory=frozenset)
 
     @property
@@ -100,25 +82,14 @@ class LocationRuntimeState:
 
 @dataclass(frozen=True)
 class OccupancyEvent:
-    """An occupancy event for internal engine processing.
-
-    Note: This is used internally by the engine. The public API uses
-    separate methods: trigger(), hold(), release() for events and
-    vacate(), lock(), unlock(), unlock_all() for commands.
-
-    Attributes:
-        location_id: Target location.
-        event_type: The event type (TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL).
-        source_id: Unique device/source ID (e.g. "binary_sensor.kitchen_motion").
-        timestamp: When the event occurred.
-        timeout: Optional timeout override in seconds (uses location default if None).
-    """
+    """An occupancy event for internal engine processing."""
 
     location_id: str
     event_type: EventType
     source_id: str
     timestamp: datetime
-    timeout: int | None = None  # Seconds, uses location default if None
+    timeout: int | None = None  # Seconds; None = indefinite for TRIGGER
+    timeout_set: bool = False  # Distinguish explicit None from omitted timeout
 
 
 @dataclass(frozen=True)
@@ -133,7 +104,7 @@ class StateTransition:
 
 @dataclass(frozen=True)
 class EngineResult:
-    """Instructions for the Host Application."""
+    """Instructions for the host application."""
 
     next_expiration: datetime | None
     transitions: list[StateTransition] = field(default_factory=list)

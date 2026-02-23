@@ -1,7 +1,7 @@
 # home-topology Integration Guide
 
-**Version**: 2.3  
-**Date**: 2025.11.26  
+**Version**: 3.0  
+**Date**: 2026-02-23  
 **Audience**: Platform developers integrating home-topology into Home Assistant.
 
 > **Quick Links**:  
@@ -9,11 +9,11 @@
 > - [API Cheat Sheet](./api-cheat-sheet.md) - Quick reference
 > - [Module APIs](../library/modules/) - Detailed module documentation
 
-> **v2.3 Changes**: 
-> - Events vs Commands API separation
-> - Timer suspension during lock
-> - Holds and timers coexist
-> - Removed identity tracking (active_occupants) - deferred to PresenceModule
+> **v3.0 Changes**:
+> - Canonical event model is `TRIGGER` + `CLEAR` (per-source contributions)
+> - No v2.x compatibility API surface (pre-alpha hard reset)
+> - Strict `FOLLOW_PARENT` semantics for direct events
+> - Stable occupancy reason contract and topology mutation rebuild support
 
 ---
 
@@ -46,6 +46,7 @@ from home_topology.modules.occupancy import OccupancyModule
 loc_mgr = LocationManager()
 bus = EventBus()
 bus.set_location_manager(loc_mgr)
+loc_mgr.set_event_bus(bus)  # Enables location.* mutation events from LocationManager
 
 # 2. Build topology
 kitchen = loc_mgr.create_location(
@@ -149,6 +150,7 @@ The "nervous system" for event routing:
 ```python
 bus = EventBus()
 bus.set_location_manager(loc_mgr)  # Enables ancestor/descendant filtering
+loc_mgr.set_event_bus(bus)  # Enables location.* mutation events from LocationManager
 
 # Subscribe to events
 from home_topology.core.bus import EventFilter
@@ -197,7 +199,7 @@ schema = occupancy.location_config_schema()
 
 # Read module state
 state = occupancy.get_location_state("kitchen")
-# {"occupied": True, "active_holds": ["presence_sensor"], "is_locked": False, ...}
+# {"occupied": True, "contributions": [{"source_id": "...", "expires_at": "..."}], ...}
 
 # Persist state
 state_dump = occupancy.dump_state()
@@ -346,7 +348,7 @@ def get_location_icon(loc_mgr, location_id: str) -> str:
     return TYPE_ICONS.get(loc_type, "mdi:map-marker")
 ```
 
-> **See also**: [UI Design Spec](./ui-design.md) section 3.1.3 for comprehensive icon tables.
+> UI-level icon and panel implementation details live in the integration adapter repository.
 
 ### Why the Kernel Stays Agnostic
 
@@ -355,7 +357,7 @@ def get_location_icon(loc_mgr, location_id: str) -> str:
 3. **Power users**: API can bypass UI constraints if needed
 4. **Future-proof**: Add new types without kernel changes
 
-> **See also**: [UI Design Spec](./ui-design.md) section 5.3.1 for detailed UI enforcement rules.
+> UI enforcement details are defined in the integration adapter repository.
 
 ---
 
@@ -371,6 +373,7 @@ async def initialize_home_topology(hass):
     loc_mgr = LocationManager()
     bus = EventBus()
     bus.set_location_manager(loc_mgr)
+    loc_mgr.set_event_bus(bus)
     
     # 2. Build topology from platform data
     await build_topology_from_ha(hass, loc_mgr)
@@ -552,9 +555,9 @@ async def setup_state_exposure(hass, modules):
             entity_id,
             "on" if payload["occupied"] else "off",
             attributes={
-                "confidence": payload["confidence"],
-                "active_holds": payload.get("active_holds", []),
-                "expires_at": payload.get("expires_at"),
+                "contributions": payload.get("contributions", []),
+                "locked_by": payload.get("locked_by", []),
+                "is_locked": payload.get("is_locked", False),
                 "friendly_name": f"{location_id} Occupancy",
             },
         )
@@ -569,8 +572,8 @@ async def setup_state_exposure(hass, modules):
 
 | Module | Entity Pattern | Type | Attributes |
 |--------|---------------|------|------------|
-| Occupancy | `binary_sensor.occupancy_{location_id}` | `binary_sensor` | `active_holds`, `is_locked`, `expires_at` |
-| Occupancy | `sensor.occupancy_confidence_{location_id}` | `sensor` | `unit_of_measurement: "%"` |
+| Occupancy | `binary_sensor.occupancy_{location_id}` | `binary_sensor` | `contributions`, `is_locked`, `locked_by` |
+| Occupancy | `sensor.occupancy_next_timeout_{location_id}` | `sensor` | `next_timeout`, `effective_timeout` |
 | Actions | `sensor.actions_{location_id}` | `sensor` | `last_action`, `action_count` |
 
 ---
@@ -735,17 +738,18 @@ async def restore_module_states(modules, state_data):
   "occupancy": {
     "kitchen": {
       "is_occupied": true,
-      "confidence": 0.85,
-      "occupied_until": "2025-11-24T14:30:00Z",
-      "active_holds": ["ble_mike"],
-      "last_updated": "2025-11-24T14:25:00Z"
+      "locked_by": [],
+      "contributions": [
+        {"source_id": "binary_sensor.kitchen_motion", "expires_at": "2025-11-24T14:30:00Z"},
+        {"source_id": "binary_sensor.kitchen_presence", "expires_at": null}
+      ],
+      "suspended_contributions": []
     },
     "living_room": {
       "is_occupied": false,
-      "confidence": 0.0,
-      "occupied_until": null,
-      "active_holds": [],
-      "last_updated": "2025-11-24T14:00:00Z"
+      "locked_by": [],
+      "contributions": [],
+      "suspended_contributions": []
     }
   },
   "actions": {
@@ -1035,7 +1039,7 @@ custom_components/home_topology/
 ├── config_flow.py        # Configuration UI
 ├── coordinator.py        # Coordinator for timeout scheduling
 ├── binary_sensor.py      # Occupancy sensors
-├── sensor.py             # Confidence sensors
+├── sensor.py             # Optional derived occupancy/timeout sensors
 └── services.yaml         # Custom services
 ```
 
@@ -1079,6 +1083,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     loc_mgr = LocationManager()
     bus = EventBus()
     bus.set_location_manager(loc_mgr)
+    loc_mgr.set_event_bus(bus)
     
     # 2. Build topology from HA areas
     await build_topology_from_ha(hass, loc_mgr)
@@ -1247,9 +1252,9 @@ def setup_state_exposure(
             entity_id,
             "on" if payload["occupied"] else "off",
             attributes={
-                "confidence": payload["confidence"],
-                "active_holds": payload.get("active_holds", []),
-                "expires_at": payload.get("expires_at"),
+                "contributions": payload.get("contributions", []),
+                "locked_by": payload.get("locked_by", []),
+                "is_locked": payload.get("is_locked", False),
                 "device_class": "occupancy",
                 "friendly_name": f"{location_id} Occupancy",
             },
@@ -1436,9 +1441,9 @@ class OccupancyBinarySensor(BinarySensorEntity):
                 payload = event.payload
                 self._attr_is_on = payload["occupied"]
                 self._attr_extra_state_attributes = {
-                    "confidence": payload["confidence"],
-                    "active_holds": payload.get("active_holds", []),
-                    "expires_at": payload.get("expires_at"),
+                    "contributions": payload.get("contributions", []),
+                    "locked_by": payload.get("locked_by", []),
+                    "is_locked": payload.get("is_locked", False),
                 }
                 self.async_write_ha_state()
         
@@ -1516,4 +1521,3 @@ This guide covered:
 **Document Version**: 2.3  
 **Last Updated**: 2025.11.26  
 **Status**: Living Document
-

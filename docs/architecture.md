@@ -177,7 +177,7 @@ loc_mgr.set_module_config(
 )
 ```
 
-> **See also**: [UI Design Spec](./ui/ui-design.md) section 5.3.1 for recommended type hierarchy and UI enforcement rules.
+> UI design and enforcement details are maintained in the integration adapter repository.
 
 ---
 

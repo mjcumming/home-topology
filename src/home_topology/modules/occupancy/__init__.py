@@ -1,29 +1,30 @@
 """
 Occupancy module for home-topology.
 
-Computes occupied/vacant state per Location based on sensor inputs.
+Computes occupied/vacant state per location based on source contributions.
 
 Features:
 - Hierarchical occupancy with parent/child propagation
-- Identity tracking (who is in the room)
 - Source-tracked locking (multiple automations can lock independently)
-- 7 event types: TRIGGER, HOLD, RELEASE, VACATE, LOCK, UNLOCK, UNLOCK_ALL
+- v3 event model: TRIGGER, CLEAR, VACATE, LOCK, UNLOCK, UNLOCK_ALL
 - State persistence with stale data cleanup
 - Binary occupied/vacant state (no confidence scoring)
 - Signal classification at integration layer
 """
 
-from .module import OccupancyModule
+from .engine import OccupancyEngine
 from .models import (
+    EngineResult,
     EventType,
-    OccupancyStrategy,
     LocationConfig,
     LocationRuntimeState,
     OccupancyEvent,
+    OccupancyStrategy,
+    SourceContribution,
     StateTransition,
-    EngineResult,
+    SuspendedContribution,
 )
-from .engine import OccupancyEngine
+from .module import OccupancyModule
 
 __all__ = [
     "OccupancyModule",
@@ -32,6 +33,8 @@ __all__ = [
     "OccupancyStrategy",
     "LocationConfig",
     "LocationRuntimeState",
+    "SourceContribution",
+    "SuspendedContribution",
     "OccupancyEvent",
     "StateTransition",
     "EngineResult",

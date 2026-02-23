@@ -198,8 +198,7 @@ occupancy.attach(bus, loc_mgr)
 
 # Event methods (from device mappings)
 occupancy.trigger(location_id, source_id, timeout)
-occupancy.hold(location_id, source_id)
-occupancy.release(location_id, source_id, trailing_timeout)
+occupancy.clear(location_id, source_id, trailing_timeout)
 
 # Command methods (from automations/UI)
 occupancy.vacate(location_id)
@@ -212,11 +211,10 @@ occupancy.vacate_area(location_id)  # Vacate location and all descendants
 state = occupancy.get_location_state(location_id)
 # Returns: {
 #     "occupied": bool,
-#     "active_holds": List[str],
+#     "contributions": List[{"source_id": str, "expires_at": Optional[str]}],
 #     "locked_by": List[str],
 #     "is_locked": bool,
-#     "occupied_until": Optional[str],  # ISO datetime
-#     "timer_remaining": Optional[float]  # seconds
+#     "suspended_contributions": List[{"source_id": str, "remaining": Optional[float]}]
 # }
 
 # Timeout management (host responsibility)
@@ -231,7 +229,7 @@ occupancy.restore_state(state_dump)
 #### Events Emitted
 
 - `occupancy.changed` - When occupancy state changes
-  - Payload: `{"occupied": bool, "active_holds": List[str], "locked_by": List[str], ...}`
+  - Payload: `{"occupied": bool, "contributions": List[dict], "locked_by": List[str], ...}`
 
 #### Events Consumed
 
@@ -367,7 +365,7 @@ all_people = presence.get_all_people()
 | Event Type | Source | When | Payload |
 |------------|--------|------|---------|
 | `sensor.state_changed` | Platform | Entity state changes | `{"old_state": str, "new_state": str, "attributes": dict}` |
-| `occupancy.changed` | `occupancy` | Occupancy state changes | `{"occupied": bool, "active_holds": List[str], ...}` |
+| `occupancy.changed` | `occupancy` | Occupancy state changes | `{"occupied": bool, "contributions": List[dict], ...}` |
 | `presence.changed` | `presence` | Person location changes | `{"person_id": str, "old_location": str, "new_location": str}` |
 | `ambient.light_changed` | `ambient` | Light level changes | `{"lux": float, "is_dark": bool, ...}` |
 | `automation.triggered` | `automation` | Rule triggered | `{"rule_id": str, "location_id": str, ...}` |
@@ -391,6 +389,7 @@ all_people = presence.get_all_people()
 loc_mgr = LocationManager()
 bus = EventBus()
 bus.set_location_manager(loc_mgr)
+loc_mgr.set_event_bus(bus)  # Enables location.* mutation events from LocationManager
 
 # 2. Build topology
 build_topology_from_platform(platform, loc_mgr)
@@ -457,8 +456,9 @@ def setup_state_exposure(bus, modules):
             f"binary_sensor.occupancy_{location_id}",
             "on" if payload["occupied"] else "off",
             attributes={
-                "confidence": payload.get("confidence"),
-                "active_holds": payload.get("active_holds", []),
+                "contributions": payload.get("contributions", []),
+                "locked_by": payload.get("locked_by", []),
+                "is_locked": payload.get("is_locked", False),
             }
         )
     
@@ -541,4 +541,3 @@ except Exception as e:
 **Document Version**: 1.0  
 **Last Updated**: 2025.01.27  
 **Status**: Living Document
-

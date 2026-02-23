@@ -19,6 +19,7 @@ from home_topology.modules.ambient import AmbientLightModule
 loc_mgr = LocationManager()
 bus = EventBus()
 bus.set_location_manager(loc_mgr)
+loc_mgr.set_event_bus(bus)  # Enables location.* mutation events from LocationManager
 
 # 2. Initialize modules
 occupancy = OccupancyModule()
@@ -132,8 +133,7 @@ bus.unsubscribe(handler)
 
 ```python
 occupancy.trigger("kitchen", "binary_sensor.motion", timeout=300)
-occupancy.hold("kitchen", "binary_sensor.presence")
-occupancy.release("kitchen", "binary_sensor.presence", trailing_timeout=120)
+occupancy.clear("kitchen", "binary_sensor.presence", trailing_timeout=120)
 ```
 
 ### Commands (from automations/UI)
@@ -150,7 +150,7 @@ occupancy.vacate_area("kitchen")  # Vacate + all descendants
 
 ```python
 state = occupancy.get_location_state("kitchen")
-# {"occupied": bool, "active_holds": List[str], "locked_by": List[str], ...}
+# {"occupied": bool, "contributions": List[dict], "locked_by": List[str], ...}
 
 next_timeout = occupancy.get_next_timeout(now)
 occupancy.check_timeouts(now)  # Host responsibility
@@ -158,7 +158,7 @@ occupancy.check_timeouts(now)  # Host responsibility
 
 ### Events
 
-- **Emitted**: `occupancy.changed` - `{"occupied": bool, "active_holds": List[str], ...}`
+- **Emitted**: `occupancy.changed` - `{"occupied": bool, "contributions": List[dict], ...}`
 - **Consumed**: `sensor.state_changed` (translated internally)
 
 ---
@@ -282,7 +282,7 @@ presence.move_person("mike", to_location_id="kitchen", source_tracker="...")
 | Event Type | Source | Payload |
 |------------|--------|---------|
 | `sensor.state_changed` | Platform | `{"old_state": str, "new_state": str, "attributes": dict}` |
-| `occupancy.changed` | `occupancy` | `{"occupied": bool, "active_holds": List[str], ...}` |
+| `occupancy.changed` | `occupancy` | `{"occupied": bool, "contributions": List[dict], ...}` |
 | `presence.changed` | `presence` | `{"person_id": str, "old_location": str, "new_location": str}` |
 | `ambient.light_changed` | `ambient` | `{"lux": float, "is_dark": bool, ...}` |
 | `automation.executed` | `automation` | `{"rules_triggered": int, "actions_executed": int, ...}` |
@@ -375,7 +375,7 @@ for module_id, module in modules.items():
     "version": 1,
     "enabled": True,
     "default_timeout": 300,
-    "hold_release_timeout": 120,
+    "default_trailing_timeout": 120,
     "occupancy_strategy": "independent",  # or "follow_parent"
     "contributes_to_parent": True,
 }
@@ -451,4 +451,3 @@ except ValueError as e:
 **Document Version**: 1.0  
 **Last Updated**: 2025.01.27  
 **Status**: Quick Reference
-

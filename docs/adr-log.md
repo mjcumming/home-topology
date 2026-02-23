@@ -825,6 +825,101 @@ class AmbientLightReading:
 
 ---
 
+### ADR-025: Occupancy v3 as Canonical Model (No v2.x Compatibility Layer) (2026-02-23)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Occupancy docs had shifted to v3 semantics while parts of implementation still reflected v2.3 concepts
+- Project is pre-alpha; compatibility constraints are low
+- Maintaining dual semantics (`TRIGGER/HOLD/RELEASE/EXTEND` and `TRIGGER/CLEAR`) creates ambiguity and integration risk
+
+**Decision**:
+Adopt v3 as the only canonical occupancy model:
+- Events: `TRIGGER`, `CLEAR`
+- Commands: `VACATE`, `LOCK`, `UNLOCK`, `UNLOCK_ALL`
+- Runtime: per-source contributions (`expires_at` per source)
+- API surface: `trigger()` and `clear()` only for occupancy events
+
+Do not provide a v2.x compatibility layer in core.
+
+**Consequences**:
+- ✅ Removes spec/code drift and mixed mental models
+- ✅ Simpler engine invariants and clearer integration contracts
+- ✅ Faster iteration while pre-alpha
+- ⚠️ Any prototype integrations targeting v2.x semantics must be updated
+
+**Alternatives Considered**:
+- Dual model support (v2.3 + v3): Rejected - complexity with little value pre-alpha
+- Keep v2.3 canonical: Rejected - weaker model for per-source state and parent/child invariants
+
+---
+
+### ADR-026: Occupancy Topology Mutation Handling via State-Preserving Rebuild (2026-02-23)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Location topology can change at runtime (create/delete/reparent/reorder)
+- Occupancy engine caches topology-derived config
+- Without explicit handling, occupancy behavior can drift from current tree
+
+**Decision**:
+`OccupancyModule` subscribes to topology mutation events and rebuilds engine config while preserving runtime state:
+- consumed events: `location.created`, `location.deleted`, `location.parent_changed`, `location.reordered`
+- rebuild flow: `export_state()` → rebuild configs from `LocationManager` → `restore_state()`
+
+Integrations must wire `LocationManager.set_event_bus(bus)` so these mutation events are emitted.
+
+**Consequences**:
+- ✅ Occupancy semantics stay aligned with live topology
+- ✅ Runtime state survives topology/config rebuilds
+- ⚠️ Missing `set_event_bus()` wiring silently disables mutation events
+
+**Alternatives Considered**:
+- Incremental in-place engine mutation: Rejected - more error-prone than deterministic rebuild
+- Polling topology changes: Rejected - unnecessary latency and complexity
+
+---
+
+### ADR-027: Documentation Boundary - Core Library vs Integration Implementation (2026-02-23)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- This repository owns the platform-agnostic core library
+- `docs/integration/` currently mixes two different audiences:
+  - library consumers integrating any platform adapter
+  - maintainers implementing a specific Home Assistant adapter
+- Mixed docs blur repo scope and create maintenance drag
+
+**Decision**:
+Keep integration guides that explain **how to use the core library APIs** in this repo.
+Move docs that specify **actual adapter implementation details** to the integration repo/package.
+
+Keep in core repo:
+- `docs/integration/integration-guide.md`
+- `docs/integration/api-reference.md`
+- `docs/integration/api-cheat-sheet.md`
+- `docs/integration/decisions.md`
+
+Move to integration repo:
+- `docs/integration/ha-sync-services.md`
+- `docs/integration/ui-design.md`
+- `docs/integration/integrity-validation.md`
+
+**Consequences**:
+- ✅ Core repo stays platform-agnostic and focused
+- ✅ Integration repo gets ownership of HA-specific implementation choices
+- ✅ Library users keep practical adapter-agnostic guidance
+- ⚠️ Requires cross-repo doc links once files are moved
+
+**Alternatives Considered**:
+- Keep all docs in core repo: Rejected - scope drift and unclear ownership
+- Remove all integration docs from core: Rejected - loses useful API usage guidance
+
+---
+
 ## Rejected Decisions
 
 ### REJECTED: Adapter Layer for Occupancy

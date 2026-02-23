@@ -372,7 +372,7 @@ Event(
     payload={
         "occupied": True,
         "previous_occupied": False,
-        "reason": "trigger:binary_sensor.kitchen_motion",
+        "reason": "event:trigger",
         "contributions": [
             {"source_id": "binary_sensor.kitchen_motion", "expires_at": "2025-11-26T15:35:00Z"},
             {"source_id": "binary_sensor.kitchen_presence", "expires_at": None},
@@ -389,7 +389,7 @@ Event(
 |-------|------|-------------|
 | `occupied` | bool | Current occupancy state |
 | `previous_occupied` | bool | Previous occupancy state |
-| `reason` | str | What caused the change (e.g., "trigger:sensor_id", "clear:sensor_id", "expired:sensor_id") |
+| `reason` | str | Stable reason string: `event:<event_type>`, `propagation:child:<location_id>`, `propagation:parent`, or `timeout` |
 | `contributions` | list[dict] | Active source contributions with expirations |
 | `locked_by` | list[str] | Source IDs currently locking |
 
@@ -596,4 +596,3 @@ See `design-decisions.md` Decision 15 for full rationale.
 | Change | Description |
 |--------|-------------|
 | Removed LocationKind | Unused enum removed from design |
-

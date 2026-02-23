@@ -576,7 +576,7 @@ def test_presence_with_motion_coverage_gap():
 - **Design Document**: `occupancy-design.md`
 - **Design Decisions**: `occupancy-design-decisions.md`
 - **Implementation Status**: `occupancy-implementation-status.md`
-- **UI Design**: `../ui/ui-design.md`
+- **UI Design**: integration adapter repository (HA-specific implementation)
 
 ---
 

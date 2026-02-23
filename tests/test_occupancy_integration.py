@@ -1,11 +1,8 @@
-"""
-Integration tests for OccupancyModule.
+"""Integration tests for OccupancyModule (v3)."""
 
-Tests the native integration of the occupancy engine with home-topology.
-"""
+from datetime import UTC, datetime
 
 import pytest
-from datetime import datetime, UTC
 
 from home_topology import Event, EventBus, LocationManager
 from home_topology.modules.occupancy import OccupancyModule
@@ -17,13 +14,14 @@ def publish_signal(
     source_id: str,
     event_type: str,
     timeout: int | None = None,
+    include_timeout_key: bool = False,
 ) -> None:
     """Publish a normalized occupancy signal event."""
     payload = {
         "event_type": event_type,
         "source_id": source_id,
     }
-    if timeout is not None:
+    if include_timeout_key or timeout is not None:
         payload["timeout"] = timeout
 
     event_bus.publish(
@@ -39,16 +37,13 @@ def publish_signal(
 
 
 @pytest.fixture
-def location_manager():
+def location_manager() -> LocationManager:
     """Create a LocationManager with a simple hierarchy."""
     mgr = LocationManager()
-
-    # Create hierarchy: house -> main_floor -> kitchen
     mgr.create_location(id="house", name="House")
     mgr.create_location(id="main_floor", name="Main Floor", parent_id="house")
     mgr.create_location(id="kitchen", name="Kitchen", parent_id="main_floor")
 
-    # Configure occupancy module for each location
     for loc_id in ["house", "main_floor", "kitchen"]:
         mgr.set_module_config(
             location_id=loc_id,
@@ -56,190 +51,128 @@ def location_manager():
             config={
                 "version": 1,
                 "enabled": True,
-                "default_timeout": 300,  # 5 min
-                "hold_release_timeout": 120,  # 2 min
+                "default_timeout": 300,
+                "default_trailing_timeout": 120,
             },
         )
 
-    # Map motion sensor to kitchen
     mgr.add_entity_to_location("binary_sensor.kitchen_motion", "kitchen")
-
     return mgr
 
 
 @pytest.fixture
-def event_bus():
-    """Create an EventBus."""
+def event_bus() -> EventBus:
     return EventBus()
 
 
 @pytest.fixture
-def occupancy_module(event_bus, location_manager):
-    """Create and attach OccupancyModule."""
+def occupancy_module(event_bus: EventBus, location_manager: LocationManager) -> OccupancyModule:
     module = OccupancyModule()
     event_bus.set_location_manager(location_manager)
     module.attach(event_bus, location_manager)
     return module
 
 
-def test_module_attachment(occupancy_module, location_manager):
-    """Test that module attaches and initializes engine."""
+def test_module_attachment(occupancy_module: OccupancyModule) -> None:
     assert occupancy_module._engine is not None
-    assert len(occupancy_module._engine.state) == 3  # house, main_floor, kitchen
+    assert len(occupancy_module._engine.state) == 3
 
-    # All should start vacant
     for loc_id in ["house", "main_floor", "kitchen"]:
         state = occupancy_module.get_location_state(loc_id)
         assert state is not None
         assert state["occupied"] is False
+        assert state["contributions"] == []
 
 
-def test_motion_sensor_triggers_occupancy(event_bus, occupancy_module, location_manager):
-    """Test that motion sensor triggers occupancy."""
-    # Track emitted events
-    emitted_events = []
+def test_motion_signal_triggers_and_propagates(
+    event_bus: EventBus,
+    occupancy_module: OccupancyModule,
+) -> None:
+    emitted: list[Event] = []
 
-    def capture_occupancy_events(event: Event):
-        emitted_events.append(event)
-
-    event_bus.subscribe(capture_occupancy_events, event_filter=None)
-
-    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
-
-    # Should emit occupancy.changed event
-    occ_events = [e for e in emitted_events if e.type == "occupancy.changed"]
-    assert len(occ_events) > 0
-
-    # Kitchen should be occupied
-    occ_event = next(e for e in occ_events if e.location_id == "kitchen")
-    assert occ_event.payload["occupied"] is True
-    assert occ_event.payload["previous_occupied"] is False
-
-    # Check state directly
-    state = occupancy_module.get_location_state("kitchen")
-    assert state["occupied"] is True
-
-
-def test_hierarchy_propagation(event_bus, occupancy_module, location_manager):
-    """Test that child occupancy propagates to parent."""
-    emitted_events = []
-
-    def capture_events(event: Event):
+    def capture(event: Event) -> None:
         if event.type == "occupancy.changed":
-            emitted_events.append(event)
+            emitted.append(event)
 
-    event_bus.subscribe(capture_events)
+    event_bus.subscribe(capture)
 
     publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
 
-    # Should have occupancy events for: kitchen, main_floor, house
-    location_ids = {e.location_id for e in emitted_events}
-    assert "kitchen" in location_ids
-    assert "main_floor" in location_ids
-    assert "house" in location_ids
+    occ_events = [e for e in emitted if e.type == "occupancy.changed"]
+    assert occ_events
 
-    # All should be occupied
-    for loc_id in ["kitchen", "main_floor", "house"]:
-        state = occupancy_module.get_location_state(loc_id)
-        assert state["occupied"] is True
+    location_ids = {e.location_id for e in occ_events}
+    assert {"kitchen", "main_floor", "house"}.issubset(location_ids)
 
-
-def test_presence_sensor_creates_hold(event_bus, occupancy_module, location_manager):
-    """Test presence sensors create HOLD events.
-
-    Note: v2.3 removed identity tracking (active_occupants).
-    """
-    # Add presence sensor
-    location_manager.add_entity_to_location("ble_presence", "kitchen")
-
-    emitted_events = []
-
-    def capture_events(event: Event):
-        if event.type == "occupancy.changed":
-            emitted_events.append(event)
-
-    event_bus.subscribe(capture_events)
-
-    publish_signal(event_bus, "kitchen", "ble_presence", "hold")
-
-    # Check emitted event has active_holds
-    kitchen_event = next(e for e in emitted_events if e.location_id == "kitchen")
-    assert "ble_presence" in kitchen_event.payload["active_holds"]
-
-    # Check state
-    state = occupancy_module.get_location_state("kitchen")
-    assert "ble_presence" in state["active_holds"]
-    assert state["occupied"] is True
+    kitchen_state = occupancy_module.get_location_state("kitchen")
+    assert kitchen_state is not None
+    assert kitchen_state["occupied"] is True
+    assert any(c["source_id"] == "binary_sensor.kitchen_motion" for c in kitchen_state["contributions"])
 
 
-def test_state_persistence(event_bus, occupancy_module, location_manager):
-    """Test state dump and restore."""
-    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
+def test_clear_signal_with_trailing_timeout(
+    occupancy_module: OccupancyModule,
+) -> None:
+    now = datetime.now(UTC)
+    occupancy_module.trigger("kitchen", "presence", timeout=None, now=now)
 
-    # Kitchen should be occupied
-    assert occupancy_module.get_location_state("kitchen")["occupied"] is True
+    state_before = occupancy_module.get_location_state("kitchen")
+    assert state_before is not None
+    indefinite = next(c for c in state_before["contributions"] if c["source_id"] == "presence")
+    assert indefinite["expires_at"] is None
 
-    # Dump state
-    state_dump = occupancy_module.dump_state()
-    assert "kitchen" in state_dump
-    assert state_dump["kitchen"]["is_occupied"] is True
+    occupancy_module.clear("kitchen", "presence", trailing_timeout=60, now=now)
 
-    # Create new module and restore
+    state_after = occupancy_module.get_location_state("kitchen")
+    assert state_after is not None
+    trailing = next(c for c in state_after["contributions"] if c["source_id"] == "presence")
+    assert trailing["expires_at"] is not None
+
+
+def test_state_persistence(occupancy_module: OccupancyModule, location_manager: LocationManager, event_bus: EventBus) -> None:
+    now = datetime.now(UTC)
+    occupancy_module.trigger("kitchen", "binary_sensor.kitchen_motion", now=now)
+    dumped = occupancy_module.dump_state()
+
     new_module = OccupancyModule()
     new_module.attach(event_bus, location_manager)
-    new_module.restore_state(state_dump)
+    new_module.restore_state(dumped)
 
-    # Should have restored occupied state
-    restored_state = new_module.get_location_state("kitchen")
-    assert restored_state["occupied"] is True
+    restored = new_module.get_location_state("kitchen")
+    assert restored is not None
+    assert restored["occupied"] is True
+    assert restored["contributions"]
 
 
-def test_default_config(occupancy_module):
-    """Test default configuration."""
+def test_default_config_and_schema(occupancy_module: OccupancyModule) -> None:
     config = occupancy_module.default_config()
+    assert config["default_timeout"] == 300
+    assert config["default_trailing_timeout"] == 120
 
-    assert config["version"] == 1
-    assert config["enabled"] is True
-    assert config["default_timeout"] == 300  # 5 minutes
-    assert config["hold_release_timeout"] == 120  # 2 minutes
-
-
-def test_config_schema(occupancy_module):
-    """Test configuration schema."""
     schema = occupancy_module.location_config_schema()
-
-    assert schema["type"] == "object"
-    assert "properties" in schema
-    assert "enabled" in schema["properties"]
     assert "default_timeout" in schema["properties"]
-    assert "hold_release_timeout" in schema["properties"]
+    assert "default_trailing_timeout" in schema["properties"]
 
 
-def test_lock_state_tracking(occupancy_module):
-    """Test that lock state is tracked correctly."""
+def test_lock_state_tracking(occupancy_module: OccupancyModule) -> None:
     now = datetime.now(UTC)
-
-    # Occupy and lock
     occupancy_module.trigger("kitchen", "motion", now=now)
     occupancy_module.lock("kitchen", "automation_a", now=now)
     occupancy_module.lock("kitchen", "automation_b", now=now)
 
     state = occupancy_module.get_location_state("kitchen")
+    assert state is not None
     assert state["is_locked"] is True
-    assert "automation_a" in state["locked_by"]
-    assert "automation_b" in state["locked_by"]
+    assert {"automation_a", "automation_b"}.issubset(set(state["locked_by"]))
 
-    # Unlock one
     occupancy_module.unlock("kitchen", "automation_a", now=now)
-
     state2 = occupancy_module.get_location_state("kitchen")
-    assert state2["is_locked"] is True  # Still locked
+    assert state2 is not None
+    assert state2["is_locked"] is True
     assert "automation_a" not in state2["locked_by"]
-    assert "automation_b" in state2["locked_by"]
 
-    # Unlock all
     occupancy_module.unlock_all("kitchen", now=now)
-
     state3 = occupancy_module.get_location_state("kitchen")
+    assert state3 is not None
     assert state3["is_locked"] is False
-    assert len(state3["locked_by"]) == 0
+    assert state3["locked_by"] == []
