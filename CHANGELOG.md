@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Occupancy Lock Mode/Scope Runtime (2026.02.25)
+- **Policy lock directives**: Introduced lock directives with explicit mode and
+  scope semantics:
+  - `LockMode`: `freeze`, `block_occupied`, `block_vacant`
+  - `LockScope`: `self`, `subtree`
+- **State model extensions**:
+  - `LocationRuntimeState.lock_modes` (effective lock modes at location)
+  - `LocationRuntimeState.direct_locks` (direct lock directives for location)
+  - `OccupancyEvent` now carries `lock_mode` and `lock_scope`
+- **Module API updates**:
+  - `lock(location_id, source_id, mode=..., scope=...)`
+  - `unlock_all(location_id)` for force reset of lock owners.
+- **Coverage additions**:
+  - subtree lock behavior tests for `block_occupied`, `block_vacant`, and
+    `freeze` propagation effects
+  - module-level mode/scope translation tests
+  - restore compatibility tests for legacy `locked_by` snapshots.
+
 #### Core Topology Events and Ordering (2026.02.23)
 - **Location mutation events from core**: `LocationManager` now emits topology
   events when attached to an event bus via `set_event_bus()`:
@@ -76,6 +94,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ConditionEvaluator** now accepts optional `ambient_module` parameter
 - **Integration ready**: HA integration can pass AmbientLightModule to automation engine
 
+### Changed
+
+- **Occupancy engine lock evaluation** now computes effective locks via
+  inherited subtree directives rather than lock-copy fanout.
+- **Freeze semantics** now suspend and resume contributions/timers while lock is
+  active; unlock resumes with remaining timer duration.
+- **`block_occupied` semantics** now prevent occupied transitions in scope.
+- **`block_vacant` semantics** now hold occupied state in scope until released.
+- **Vacate behavior** now supports lock-aware subtree vacate with optional
+  `include_locked` override and unlock attempt when override is enabled.
+
 ### Documentation
 
 #### New Documents
@@ -84,9 +113,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Updated Documents
 - `docs/adr-log.md` → Added ADR-024 (Hierarchical Ambient Light Sensor Lookup)
 - `docs/architecture.md` → Added AmbientLightModule to built-in modules list
+- Occupancy docs refreshed for mode/scope lock policy:
+  - `docs/library/modules/occupancy/design.md`
+  - `docs/library/modules/occupancy/design-decisions.md`
+  - `docs/library/modules/occupancy/api.md`
+  - `docs/modules/occupancy-integration.md`
+  - `docs/integration/api-reference.md`
+  - `docs/integration/api-cheat-sheet.md`
 
 #### Architecture Decisions
 - **ADR-024**: Hierarchical Ambient Light Sensor Lookup (automatic inheritance from parent locations)
+- **ADR-028**: Occupancy lock mode/scope policy contract
 
 ---
 
