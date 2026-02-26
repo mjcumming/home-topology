@@ -78,7 +78,7 @@ pip install home-topology
 Or pin a specific version:
 
 ```bash
-pip install home-topology==0.2.0a0
+pip install home-topology==1.0.0
 ```
 
 Install from source (development):
@@ -160,7 +160,7 @@ from typing import Optional, Dict, Any
 @dataclass
 class Event:
     type: str                  # "sensor.state_changed", "occupancy.changed", ...
-    source: str                # "ha", "occupancy", "actions", ...
+    source: str                # "ha", "occupancy", "automation", ...
     location_id: Optional[str]
     entity_id: Optional[str]
     payload: Dict[str, Any]

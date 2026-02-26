@@ -20,23 +20,23 @@
 ### 3. CI/CD Pipeline 🚀
 **Decision**: GitHub Actions  
 - Python 3.10, 3.11, 3.12 matrix
+- Python 3.12, 3.13 matrix
 - black, ruff, mypy, pytest with coverage
 - Codecov integration
 - **Status**: `.github/workflows/ci.yml` created
 
 ### 4. Version Strategy 📊
-**Decision**: SemVer with `-alpha` suffix
+**Decision**: SemVer with pre-release `aN` suffix
 ```
-0.1.0-alpha ← Current
-0.2.0-alpha - Occupancy complete
-0.3.0-alpha - Actions complete  
+1.0.0       ← Current
+0.3.0a0     - Next pre-release
 1.0.0-rc.1  - Release candidate
 1.0.0       - Stable
 ```
 
 ### 5. Home Assistant Integration 🏠
-**Decision**: Separate repository (`home-topology-ha`)  
-**Rationale**: Required for HACS compatibility
+**Decision**: Separate repository (`topomation`)  
+**Rationale**: Keep the kernel platform-agnostic; HA adapter lifecycle stays independent
 
 ### 6. Documentation Site 📚
 **Decision**: GitHub README/Wiki for now  

@@ -349,7 +349,7 @@ Presence knows **who** is there.
 ```python
 # Kitchen is occupied
 occupancy_state = occupancy_module.get_location_state("kitchen")
-# { "occupied": True, "confidence": 0.95 }
+# { "occupied": True, "contributions": [...], "is_locked": False }
 
 # Who's in the kitchen?
 people = presence_module.get_people_in_location("kitchen")
@@ -365,7 +365,6 @@ people = presence_module.get_people_in_location("kitchen")
     "location_id": "kitchen",
     "payload": {
         "occupied": True,
-        "confidence": 0.95,
         "people_present": ["person_mike", "person_sarah"],  # From PresenceModule
         "person_count": 2,
     }
@@ -831,4 +830,3 @@ Presence Module extends occupancy tracking to answer **"who is where?"**
 **Document Status**: Future Design  
 **Last Updated**: 2025.12.09  
 **Implementation**: Planned for v0.4.0+
-

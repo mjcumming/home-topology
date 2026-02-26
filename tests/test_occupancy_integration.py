@@ -131,6 +131,25 @@ def test_clear_signal_with_trailing_timeout(
     assert trailing["expires_at"] is not None
 
 
+@pytest.mark.parametrize("event_type", ["vacate", "vacant", "unoccupied"])
+def test_vacate_aliases_clear_occupancy(
+    event_bus: EventBus,
+    occupancy_module: OccupancyModule,
+    event_type: str,
+) -> None:
+    """vacant/unoccupied aliases should map to authoritative vacate behavior."""
+    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", "trigger")
+    occupied = occupancy_module.get_location_state("kitchen")
+    assert occupied is not None
+    assert occupied["occupied"] is True
+
+    publish_signal(event_bus, "kitchen", "binary_sensor.kitchen_motion", event_type)
+    state = occupancy_module.get_location_state("kitchen")
+    assert state is not None
+    assert state["occupied"] is False
+    assert state["contributions"] == []
+
+
 def test_state_persistence(
     occupancy_module: OccupancyModule, location_manager: LocationManager, event_bus: EventBus
 ) -> None:

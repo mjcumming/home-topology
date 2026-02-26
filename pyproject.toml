@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "home-topology"
-version = "0.2.0a0"
+version = "1.0.0"
 description = "A platform-agnostic home topology kernel for modeling spaces and attaching behavior modules"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,7 +13,7 @@ authors = [
     {name = "Michael Cumming", email = "mjcumming@users.noreply.github.com"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

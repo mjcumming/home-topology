@@ -14,7 +14,7 @@
 `home-topology` is a **platform-agnostic home topology kernel** that provides:
 
 1. **Topology** - A spatial model of your home (Locations)
-2. **Behavior** - Pluggable modules (Occupancy, Actions, Comfort, Energy)
+2. **Behavior** - Pluggable modules (Occupancy, Automation, Ambient, Comfort, Energy)
 3. **Events** - Location-aware event routing (EventBus)
 
 ### Key Principles
@@ -52,7 +52,7 @@ The kernel separates concerns into three primary components:
 **Does NOT**: Modify topology, change entity mappings, depend on platform APIs
 
 - ✅ Subscribe to events
-- ✅ Implement occupancy/actions/comfort/energy logic
+- ✅ Implement occupancy/automation/ambient/comfort/energy logic
 - ✅ Maintain runtime state
 - ✅ Emit semantic events
 
@@ -215,7 +215,7 @@ class LocationManager:
 @dataclass
 class Event:
     type: str                    # "sensor.state_changed", "occupancy.changed"
-    source: str                  # "ha", "occupancy", "actions"
+    source: str                  # "ha", "occupancy", "automation"
     location_id: Optional[str]   # Location this event relates to
     entity_id: Optional[str]     # Entity this event relates to
     payload: Dict[str, Any]      # Event-specific data
@@ -463,8 +463,8 @@ The `home-topology` kernel ships with these modules:
 - **OccupancyModule** - Track occupancy state per location  
   See [Occupancy Module Design](./modules/occupancy/design.md)
 
-- **ActionsModule** - Execute automations based on semantic events  
-  See [Actions Module Design](./modules/actions/design.md)
+- **AutomationModule** - Execute automations based on semantic events  
+  See [Automation Module Design](./modules/actions/design.md)
 
 Future modules:
 - **ComfortModule** - Temperature, humidity, air quality per location
@@ -574,7 +574,7 @@ The kernel is responsible for:
 | Responsibility | Description |
 |----------------|-------------|
 | **Tree Structure** | Store and query location hierarchy |
-| **Module State** | Occupancy, actions, etc. |
+| **Module State** | Occupancy, automation, etc. |
 | **Event Processing** | Handle normalized events |
 | **State Export/Import** | `dump_state()` / `restore_state()` |
 
@@ -627,7 +627,7 @@ The inspector uses a "Module Block" layout:
 │   ▶ Kitchen Motion (1 rule)     │  ← Device cards (collapsible)
 │   ▶ Main Lights (2 rules)       │
 ├─────────────────────────────────┤
-│ ▼ Actions                       │  ← Module Block
+│ ▼ Automation                    │  ← Module Block
 │   When Occupied → Turn on lights│
 │   When Clear → Turn off lights  │
 └─────────────────────────────────┘
@@ -653,7 +653,7 @@ Test core components in isolation:
 ### 8.2 Integration Tests
 
 Test module interactions:
-- Occupancy emits event → Actions reacts
+- Occupancy emits event → Automation reacts
 - Parent occupancy propagation
 - Config migration across versions
 
@@ -730,8 +730,8 @@ State persistence is triggered by HA (e.g., on shutdown, periodic backup).
 - **Decision**: Integration-driven event classification + module dedupe + optional bus dedupe
 - **Rationale**: Integration controls what sends occupancy events; core stays simple
 
-### 10.9 Configurable Action State Checking
-- **Decision**: Actions can trust or ignore device state
+### 10.9 Configurable Automation State Checking
+- **Decision**: Automation can trust or ignore device state
 - **Rationale**: Supports flaky devices, user preference
 
 ### 10.10 Module Enable/Disable Granularity
@@ -772,7 +772,7 @@ State persistence is triggered by HA (e.g., on shutdown, periodic backup).
 
 ### 12.2 Module Dependencies
 Some modules may depend on others:
-- Actions may depend on Occupancy
+- Automation may depend on Occupancy
 - Comfort may depend on Occupancy + Energy
 
 Design TBD: explicit dependency graph or implicit (modules just subscribe to each other's events).

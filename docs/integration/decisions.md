@@ -1,7 +1,7 @@
 # Home Topology Integration - Architecture Decisions
 
 **Scope**: Decisions specific to the Home Assistant integration layer  
-**Note**: These decisions will move to the `home-topology-ha` repository when the integration is separated.
+**Note**: Topomation is the active Home Assistant integration repository consuming this library.
 
 ---
 
@@ -231,4 +231,3 @@ When a new location is created, should we auto-add entities from the HA area?
 ---
 
 **Last Updated**: 2025-11-26
-

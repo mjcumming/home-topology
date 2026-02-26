@@ -1,6 +1,6 @@
-# Actions Module Design
+# Automation Module Design
 
-> Detailed design specification for the ActionsModule
+> Detailed design specification for the AutomationModule (`actions` import path is deprecated compatibility).
 
 **Status**: Draft  
 **Version**: 1.0  
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-The **ActionsModule** executes automations in response to semantic events (like `occupancy.changed`) from other modules. It provides rule-based trigger/condition/action logic with configurable device state handling.
+The **AutomationModule** executes automations in response to semantic events (like `occupancy.changed`) from other modules. It provides rule-based trigger/condition/action logic with configurable device state handling.
 
 ### Goals
 
@@ -24,12 +24,12 @@ The **ActionsModule** executes automations in response to semantic events (like 
 
 ## 2. Responsibilities
 
-The ActionsModule:
+The AutomationModule:
 
 - Subscribes to semantic events (`occupancy.changed`, etc.)
 - Evaluates rule conditions (time of day, entity states, manual flags)
 - Executes actions via platform adapter (HA service calls)
-- Emits `action.executed` events for observability
+- Emits `automation.executed` events for observability
 - Maintains action history and statistics
 
 ---
@@ -40,7 +40,7 @@ Each location can have multiple rules. A rule consists of:
 
 ```python
 @dataclass
-class ActionRule:
+class AutomationRule:
     id: str                              # Unique rule ID
     enabled: bool                        # Rule on/off
     trigger: TriggerConfig               # What event triggers this
@@ -99,7 +99,6 @@ class ActionRule:
     "event_type": "occupancy.changed",
     "payload_match": {
         "occupied": True,
-        "confidence": {"min": 0.7},  # Optional threshold
     },
 }
 ```
@@ -126,7 +125,7 @@ class ActionRule:
 ### 4.2 Trigger Evaluation
 
 ```python
-def _evaluate_trigger(self, rule: ActionRule, event: Event) -> bool:
+def _evaluate_trigger(self, rule: AutomationRule, event: Event) -> bool:
     trigger = rule.trigger
     
     if trigger["type"] == "event":
@@ -209,7 +208,7 @@ Or specific times:
 ### 5.2 Condition Evaluation
 
 ```python
-def _evaluate_conditions(self, rule: ActionRule) -> bool:
+def _evaluate_conditions(self, rule: AutomationRule) -> bool:
     for condition in rule.conditions:
         if not self._evaluate_condition(condition):
             return False  # All must be true
@@ -408,11 +407,11 @@ location.modules["actions"] = {
 
 ## 8. Event Emissions
 
-Emit `action.executed` for observability:
+Emit `automation.executed` for observability:
 
 ```python
 Event(
-    type="action.executed",
+    type="automation.executed",
     source="actions",
     location_id="kitchen",
     payload={
@@ -464,7 +463,7 @@ def location_config_schema(self) -> Dict:
         "properties": {
             "enabled": {
                 "type": "boolean",
-                "title": "Enable Actions",
+                "title": "Enable Automation",
                 "default": True,
             },
             "trust_device_state": {
@@ -505,7 +504,7 @@ def location_config_schema(self) -> Dict:
 
 ## 11. Platform Adapter Interface
 
-Actions module talks to platform (HA) via adapter:
+Automation module talks to platform (HA) via adapter:
 
 ```python
 class PlatformAdapter(ABC):
@@ -546,7 +545,7 @@ class HAAdapter(PlatformAdapter):
 ## 12. Implementation Plan
 
 ### Phase 1: Core Rule Engine (v0.1.0) ✅ Complete
-- [x] ActionRule dataclass
+- [x] AutomationRule dataclass
 - [x] Event trigger handling
 - [x] Basic condition evaluation (time, state)
 - [x] Service call actions
@@ -634,11 +633,11 @@ def _execute_action(self, action: Dict, rule_id: str, location_id: str):
 ### Implementation Notes (2025-11-26)
 
 Phase 1 is complete with:
-- ✅ ActionRule dataclass with full serialization
+- ✅ AutomationRule dataclass with full serialization
 - ✅ Event trigger handling (occupancy.changed, etc.)
 - ✅ Condition evaluation (time_of_day, state, numeric_state, lux_level, location_occupied, day_of_week)
 - ✅ Service call and delay actions
-- ✅ Event emission (action.executed)
+- ✅ Event emission (automation.executed)
 - ✅ 68 tests covering all components
 
 **Pre-built Presets** (in `presets.py`):
@@ -649,4 +648,3 @@ Phase 1 is complete with:
 - `media_off_when_vacant()` - Turn off media players
 - `scene_when_occupied()` - Activate scenes
 - `adaptive_lighting()` - Multi-rule brightness by time of day
-

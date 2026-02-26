@@ -297,9 +297,9 @@ tests/
 ├── test_manager.py           # Unit tests for LocationManager
 ├── modules/
 │   ├── test_occupancy.py     # Unit tests for OccupancyModule
-│   └── test_actions.py       # Unit tests for ActionsModule
+│   └── test_automation.py    # Unit tests for AutomationModule
 └── integration/
-    └── test_occupancy_actions.py  # Integration tests
+    └── test_occupancy_automation.py  # Integration tests
 ```
 
 ### 4.2 Test Naming
@@ -631,14 +631,14 @@ def restore_state(self, state: Dict) -> None:
 ```toml
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py312"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -695,7 +695,7 @@ class HomeTopology:  # BAD: Does too much
 class LocationManager: ...
 class EventBus: ...
 class OccupancyModule: ...
-class ActionsModule: ...
+class AutomationModule: ...
 ```
 
 ### 12.2 Circular Imports
@@ -783,4 +783,3 @@ Standards evolve. Propose changes via:
 
 **Document Status**: Active  
 **Last Updated**: 2025-11-24
-

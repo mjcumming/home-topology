@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-02-26
+
 ### Added
 
 #### Occupancy Lock Mode/Scope Runtime (2026.02.25)
@@ -101,8 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Release workflow now creates GitHub Releases from tags and publishes via PyPI trusted publishing (OIDC).
   - Release notes are extracted from `CHANGELOG.md` during tagged releases.
   - Added security workflow (CodeQL + dependency review).
-- **Packaging version normalization**:
-  - Updated project version string to PEP 440 format (`0.2.0a0`) for PyPI compatibility.
+- **Stable release versioning**:
+  - Promoted package version to `1.0.0` for stable release.
+  - Updated package metadata and installation documentation to match `1.0.0`.
 
 - **Occupancy engine lock evaluation** now computes effective locks via
   inherited subtree directives rather than lock-copy fanout.

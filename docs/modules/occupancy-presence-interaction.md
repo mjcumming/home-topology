@@ -92,7 +92,7 @@ T+0.0s: Door opens
   → Motion sensor detects movement
   → OccupancyModule emits: occupancy.changed (occupied=True)
 
-T+0.0s: ActionsModule receives occupancy.changed
+T+0.0s: AutomationModule receives occupancy.changed
   → Rule "turn on generic lights" executes
   → ✅ Lights turn ON immediately
 
@@ -100,7 +100,7 @@ T+2.5s: BLE tracker detects phone
   → Camera identifies person as Mike
   → PresenceModule emits: presence.changed (person=mike)
 
-T+2.5s: ActionsModule receives presence.changed
+T+2.5s: AutomationModule receives presence.changed
   → Rule "if mike in office, apply warm scene" executes
   → ✅ Mike's scene applies (overrides generic lights)
 
@@ -435,7 +435,7 @@ automation:
 Each module has a single responsibility:
 - **OccupancyModule**: Detect activity
 - **PresenceModule**: Identify entities
-- **ActionsModule**: Execute logic
+- **AutomationModule**: Execute logic
 
 ### No Coordination
 
@@ -446,7 +446,7 @@ Modules don't wait for each other:
 
 ### Composable Events
 
-ActionsModule can use:
+AutomationModule can use:
 - Occupancy events only (90% of cases)
 - Presence events only (specific notifications)
 - Both events (smart combinations)
@@ -473,7 +473,7 @@ ActionsModule can use:
 
 - OccupancyModule: Fast, generic, binary occupancy detection
 - PresenceModule: Slower, specific, person identification
-- ActionsModule: Composes both event streams flexibly
+- AutomationModule: Composes both event streams flexibly
 
 **No coordination needed** - modules are independent, user chooses patterns.
 
@@ -486,4 +486,3 @@ ActionsModule can use:
 **Document Version**: 1.0
 **Last Updated**: 2025.12.09
 **Status**: Active
-

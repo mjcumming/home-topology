@@ -6,10 +6,10 @@ Run with: python3 -c "import sys; sys.path.insert(0, 'src'); exec(open('example.
 Or set PYTHONPATH: PYTHONPATH=src python3 example.py
 """
 
-from datetime import datetime, UTC
-from home_topology.core.manager import LocationManager
-from home_topology.core.bus import EventBus, Event
-from home_topology.modules.occupancy.module import OccupancyModule
+from datetime import UTC, datetime
+
+from home_topology import Event, EventBus, LocationManager
+from home_topology.modules.occupancy import OccupancyModule
 
 print("=" * 60)
 print("home-topology Example")
@@ -61,9 +61,9 @@ loc_mgr.set_module_config(
     module_id="occupancy",
     config={
         "version": occupancy.CURRENT_CONFIG_VERSION,
-        "motion_sensors": ["binary_sensor.kitchen_motion"],
-        "timeout_seconds": 300,
         "enabled": True,
+        "default_timeout": 300,
+        "default_trailing_timeout": 120,
     },
 )
 print("   ✓ Configuration set for kitchen")
@@ -79,23 +79,31 @@ print(f"   ✓ Descendants of house: {[d.name for d in descendants]}")
 children = loc_mgr.children_of("main_floor")
 print(f"   ✓ Children of main_floor: {[c.name for c in children]}")
 
-# 5. Publish a test event
-print("\n5. Publishing test event...")
+# 5. Publish a normalized occupancy signal
+print("\n5. Publishing occupancy signal...")
 event = Event(
-    type="sensor.state_changed",
+    type="occupancy.signal",
     source="example",
     location_id="kitchen",
     entity_id="binary_sensor.kitchen_motion",
-    payload={"old_state": "off", "new_state": "on"},
+    payload={
+        "event_type": "trigger",
+        "source_id": "binary_sensor.kitchen_motion",
+        "timeout": 300,
+    },
     timestamp=datetime.now(UTC),
 )
 bus.publish(event)
 print(f"   ✓ Published: {event.type} for {event.entity_id}")
 
-# 6. Query occupancy state (placeholder implementation)
+# 6. Query occupancy state
 print("\n6. Querying occupancy state...")
 state = occupancy.get_location_state("kitchen")
-print(f"   ✓ Kitchen occupancy: occupied={state['occupied']}, confidence={state['confidence']}")
+if state is None:
+    print("   ! Kitchen state unavailable")
+else:
+    print(f"   ✓ Kitchen occupancy: occupied={state['occupied']}")
+    print(f"   ✓ Active contributions: {len(state['contributions'])}")
 
 print("\n" + "=" * 60)
 print("Example complete! The kernel is ready for development.")

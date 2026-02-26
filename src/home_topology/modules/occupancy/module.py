@@ -211,6 +211,14 @@ class OccupancyModule(LocationModule):
         except ValueError:
             pass
 
+        aliases = {
+            "vacant": EventType.VACATE,
+            "unoccupied": EventType.VACATE,
+        }
+        lowered = normalized.lower()
+        if lowered in aliases:
+            return aliases[lowered]
+
         try:
             return EventType[normalized.upper()]
         except KeyError:

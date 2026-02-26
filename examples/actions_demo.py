@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo of the ActionsModule with common automation patterns.
+Demo of the AutomationModule with common automation patterns.
 
 This example demonstrates:
 1. Setting up actions with the mock platform adapter
@@ -16,28 +16,28 @@ from datetime import datetime, UTC
 
 from home_topology.core.bus import Event, EventBus
 from home_topology.core.manager import LocationManager
-from home_topology.modules.actions import (
-    ActionsModule,
-    MockPlatformAdapter,
-    ActionRule,
+from home_topology.modules.automation import (
+    AutomationModule,
+    AutomationRule,
     EventTriggerConfig,
-    TimeOfDayCondition,
     LuxLevelCondition,
-    StateCondition,
+    MockPlatformAdapter,
     ServiceCallAction,
-    DelayAction,
-    # Presets
-    lights_on_when_occupied,
-    lights_off_when_vacant,
+    StateCondition,
+    TimeOfDayCondition,
     fan_off_when_vacant,
     media_off_when_vacant,
+)
+from home_topology.modules.lighting import (
     adaptive_lighting,
+    lights_off_when_vacant,
+    lights_on_when_occupied,
 )
 
 
 def main():
     print("=" * 60)
-    print("ActionsModule Demo")
+    print("AutomationModule Demo")
     print("=" * 60)
 
     # Set up kernel components
@@ -65,8 +65,8 @@ def main():
     platform.set_state("input_boolean.automation_enabled", "on")
     platform.set_numeric_state("sensor.kitchen_lux", 30.0)  # Dark
 
-    # Create actions module with platform adapter
-    actions = ActionsModule(platform=platform)
+    # Create automation module with platform adapter
+    actions = AutomationModule(platform=platform)
     actions.attach(bus, loc_manager)
 
     print("\n1. USING PRESETS (Common Patterns)")
@@ -161,7 +161,7 @@ def main():
     # - It's after sunset
     # - Automation is enabled
     # - Lux level is low
-    custom_rule = ActionRule(
+    custom_rule = AutomationRule(
         id="smart_kitchen_lights",
         enabled=True,
         trigger=EventTriggerConfig(
@@ -182,8 +182,8 @@ def main():
         ],
     )
     actions.add_rule("kitchen", custom_rule)
-    print(f"✓ Created custom rule with 3 conditions")
-    print(f"   Conditions: time_of_day, state, lux_level")
+    print("✓ Created custom rule with 3 conditions")
+    print("   Conditions: time_of_day, state, lux_level")
 
     print("\n4. ADAPTIVE LIGHTING (Multiple Brightness Levels)")
     print("-" * 40)
@@ -236,4 +236,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

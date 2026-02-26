@@ -68,7 +68,7 @@ None currently
 - None
 
 ### Medium Priority
-1. Python version requirements and docs consistency (`3.10+` vs tested baseline)
+- None
 
 ### Low Priority
 - None

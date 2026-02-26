@@ -152,9 +152,9 @@ INFO     Handling event: momentary in kitchen (category=motion, source=binary_se
 INFO     kitchen: VACANT -> OCCUPIED (event)
 INFO     main_floor: VACANT -> OCCUPIED (event)
 INFO     house: VACANT -> OCCUPIED (event)
-INFO     Occupancy changed: kitchen → OCCUPIED (confidence=0.80)
-INFO     Occupancy changed: main_floor → OCCUPIED (confidence=0.80)
-INFO     Occupancy changed: house → OCCUPIED (confidence=0.80)
+INFO     Occupancy changed: kitchen → OCCUPIED
+INFO     Occupancy changed: main_floor → OCCUPIED
+INFO     Occupancy changed: house → OCCUPIED
 INFO     ✓ Occupancy successfully propagated up hierarchy
 ```
 
@@ -230,4 +230,3 @@ To add more tests:
 - Run `make help` for available make targets
 - Check existing tests for examples
 - All tests have extensive inline documentation
-

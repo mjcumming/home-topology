@@ -70,13 +70,18 @@ loc_mgr.set_module_config(
 occupancy = OccupancyModule()
 occupancy.attach(bus, loc_mgr)
 
-# 4. Publish platform event
+# 4. Publish normalized occupancy signal
 bus.publish(
     Event(
-        type="sensor.state_changed",
+        type="occupancy.signal",
         source="ha",
+        location_id="kitchen",
         entity_id="binary_sensor.kitchen_motion",
-        payload={"old_state": "off", "new_state": "on"},
+        payload={
+            "event_type": "trigger",
+            "source_id": "binary_sensor.kitchen_motion",
+            "timeout": 300,
+        },
         timestamp=datetime.now(UTC),
     )
 )
@@ -166,11 +171,15 @@ bus.subscribe(
 # Publish events
 bus.publish(
     Event(
-        type="sensor.state_changed",
+        type="occupancy.signal",
         source="ha",
         entity_id="binary_sensor.motion",
         location_id="kitchen",
-        payload={"old_state": "off", "new_state": "on"}
+        payload={
+            "event_type": "trigger",
+            "source_id": "binary_sensor.motion",
+            "timeout": 300,
+        },
     )
 )
 ```
@@ -385,7 +394,7 @@ async def initialize_home_topology(hass):
     # 4. Initialize modules
     modules = {
         "occupancy": OccupancyModule(),
-        "actions": ActionsModule(),
+        "automation": AutomationModule(),
     }
     
     # 5. Attach modules to kernel
@@ -405,7 +414,7 @@ async def initialize_home_topology(hass):
     # 9. Set up timeout scheduling
     setup_timeout_scheduler(hass, modules)
     
-    # 10. Subscribe to semantic events for actions
+    # 10. Subscribe to semantic events for automation
     setup_semantic_event_handlers(hass, bus)
     
     return {
@@ -475,13 +484,17 @@ def state_changed_listener(hass, event):
     loc_mgr = kernel["loc_mgr"]
     location_id = loc_mgr.get_entity_location(entity_id)
     
-    # Translate to kernel event
+    signal_type = "trigger" if new_state.state == "on" else "clear"
+
+    # Translate to normalized occupancy.signal
     kernel_event = Event(
-        type="sensor.state_changed",
+        type="occupancy.signal",
         source="ha",
         entity_id=entity_id,
         location_id=location_id,
         payload={
+            "event_type": signal_type,
+            "source_id": entity_id,
             "old_state": old_state.state if old_state else None,
             "new_state": new_state.state,
             "attributes": dict(new_state.attributes),
@@ -498,7 +511,7 @@ def state_changed_listener(hass, event):
 
 | Platform Event | Kernel Event Type | Notes |
 |----------------|-------------------|-------|
-| `state_changed` | `sensor.state_changed` | All entity state changes |
+| `state_changed` | `occupancy.signal` | Normalized occupancy signals for occupancy module |
 | Time trigger | `time.tick` | Periodic or scheduled |
 | Service call | `service.called` | User-initiated actions |
 | Platform start | `platform.started` | Initial load complete |
@@ -574,7 +587,7 @@ async def setup_state_exposure(hass, modules):
 |--------|---------------|------|------------|
 | Occupancy | `binary_sensor.occupancy_{location_id}` | `binary_sensor` | `contributions`, `is_locked`, `locked_by` |
 | Occupancy | `sensor.occupancy_next_timeout_{location_id}` | `sensor` | `next_timeout`, `effective_timeout` |
-| Actions | `sensor.actions_{location_id}` | `sensor` | `last_action`, `action_count` |
+| Automation | `sensor.automation_{location_id}` | `sensor` | `last_action`, `action_count` |
 
 ---
 
@@ -752,7 +765,7 @@ async def restore_module_states(modules, state_data):
       "suspended_contributions": []
     }
   },
-  "actions": {
+  "automation": {
     "last_action_by_location": {
       "kitchen": "lights_on",
       "living_room": "climate_adjust"
@@ -882,9 +895,15 @@ def test_occupancy_timeout():
     # Trigger motion at t=0
     t0 = datetime(2025, 11, 24, 14, 0, 0, tzinfo=UTC)
     bus.publish(Event(
-        type="sensor.state_changed",
+        type="occupancy.signal",
+        source="test",
+        location_id="kitchen",
         entity_id="binary_sensor.motion",
-        payload={"new_state": "on"},
+        payload={
+            "event_type": "trigger",
+            "source_id": "binary_sensor.motion",
+            "timeout": 300,
+        },
         timestamp=t0,
     ))
     
@@ -911,7 +930,7 @@ def test_occupancy_timeout():
 
 **✅ DO:**
 
-- Use descriptive event types: `occupancy.changed`, `action.executed`
+- Use descriptive event types: `occupancy.changed`, `automation.executed`
 - Include timestamps on all events
 - Keep payloads JSON-serializable
 - Document event schemas
@@ -1064,7 +1083,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 
 from home_topology import LocationManager, EventBus, Event
 from home_topology.modules.occupancy import OccupancyModule
-from home_topology.modules.actions import ActionsModule
+from home_topology.modules.automation import AutomationModule
 
 from .coordinator import HomeTopologyCoordinator
 from .const import DOMAIN
@@ -1091,7 +1110,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # 3. Initialize modules
     modules = {
         "occupancy": OccupancyModule(),
-        "actions": ActionsModule(),
+        "automation": AutomationModule(),
     }
     
     # 4. Attach modules
@@ -1207,13 +1226,17 @@ def setup_event_bridge(
         # Get location for entity
         location_id = loc_mgr.get_entity_location(entity_id)
         
-        # Publish to kernel
+        signal_type = "trigger" if new_state.state == "on" else "clear"
+
+        # Publish normalized occupancy signal to kernel
         kernel_event = Event(
-            type="sensor.state_changed",
+            type="occupancy.signal",
             source="ha",
             entity_id=entity_id,
             location_id=location_id,
             payload={
+                "event_type": signal_type,
+                "source_id": entity_id,
                 "old_state": old_state.state if old_state else None,
                 "new_state": new_state.state,
                 "attributes": dict(new_state.attributes),
