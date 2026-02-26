@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mjcumming/home-topology/actions/workflows/ci.yml/badge.svg)](https://github.com/mjcumming/home-topology/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 > A platform-agnostic **home topology kernel** for modeling spaces (Locations), attaching behavior (Modules), and wiring everything together with a location-aware **Event Bus**.
@@ -10,7 +10,7 @@
 `home-topology` is the structural backbone for smart homes:
 
 - It models **where things are** (rooms, floors, zones, virtual spaces).
-- It lets you attach **modules** like Occupancy, Actions, Comfort, Energy.
+- It lets you attach **modules** like Occupancy, Automation, Ambient, Comfort, Energy.
 - It routes **events** through this topology so modules can react cleanly.
 - It stays **independent of Home Assistant** or any specific platform.
 
@@ -50,7 +50,7 @@ Your storage room doesn't need a motion sensor. Turn on the light → room is oc
   Structured model of your home: house → floors → rooms → zones, with optional links to Home Assistant Areas.
 
 - 🧠 **Modules as plug-ins**  
-  Occupancy, Actions, Comfort, Energy, etc. are independent modules that attach to Locations and react to events.
+  Occupancy, Automation, Ambient, Comfort, Energy, etc. are independent modules that attach to Locations and react to events.
 
 - 🔁 **Location-aware Event Bus**  
   Simple, synchronous event pipeline with filters for type / location / ancestors / descendants.
@@ -75,7 +75,36 @@ Your storage room doesn't need a motion sensor. Turn on the light → room is oc
 pip install home-topology
 ```
 
-(Placeholder – adjust once published.)
+Or pin a specific version:
+
+```bash
+pip install home-topology==0.2.0a0
+```
+
+Install from source (development):
+
+```bash
+git clone https://github.com/mjcumming/home-topology.git
+cd home-topology
+pip install -e ".[dev]"
+```
+
+---
+
+## Used by Topomation
+
+The current Topomation Home Assistant integration uses these `home-topology` surfaces at runtime:
+
+- Core: `LocationManager`, `EventBus`, `Event`, `EventFilter`
+- Modules: `OccupancyModule`, `AutomationModule`, `AmbientLightModule`
+
+Topomation relies on:
+
+- Location tree and entity-to-location mapping
+- Topology and semantic event routing (`occupancy.signal`, `occupancy.changed`, etc.)
+- Occupancy runtime commands/state APIs (trigger/clear/vacate/lock family + timeout/state queries)
+- Per-location automation module config/state persistence
+- Ambient light lookups for location-level light state entities
 
 ---
 
@@ -117,7 +146,7 @@ Responsibilities:
   location.modules["occupancy"]  # config for the Occupancy module on this location
   ```
 
-It does **not** implement occupancy, energy, or actions logic.
+It does **not** implement occupancy, energy, or automation logic.
 
 ### Event Bus
 
@@ -147,8 +176,9 @@ class Event:
 
 Modules are plug-ins that add behavior to the topology:
 
-* **OccupancyModule** – computes `occupied` / `confidence` per Location.
-* **ActionsModule** – runs automations in response to semantic events.
+* **OccupancyModule** – computes binary `occupied` / `vacant` per Location.
+* **AutomationModule** – runs automations in response to semantic events.
+* **AmbientLightModule** – resolves ambient light using local/ancestor sensors with fallback strategies.
 * **ComfortModule** (future) – room comfort metrics.
 * **EnergyModule** (future) – room-level energy and power.
 
@@ -195,15 +225,23 @@ class LocationModule:
 > **Note:** This is illustrative, not a final API.
 
 ```python
-from home_topology.core.manager import LocationManager
-from home_topology.core.bus import EventBus, Event
-from home_topology.modules.occupancy.module import OccupancyModule
+from datetime import UTC, datetime
+from home_topology import Event, EventBus, LocationManager
+from home_topology.modules.occupancy import OccupancyModule
 
 # 1. Kernel components
 loc_mgr = LocationManager()
 bus = EventBus()
+bus.set_location_manager(loc_mgr)
+loc_mgr.set_event_bus(bus)
 
 # 2. Create a simple topology
+loc_mgr.create_location(
+    id="main_floor",
+    name="Main Floor",
+    parent_id=None,
+)
+
 kitchen = loc_mgr.create_location(
     id="kitchen",
     name="Kitchen",
@@ -224,8 +262,10 @@ loc_mgr.set_module_config(
     module_id="occupancy",
     config={
         "version": occupancy.CURRENT_CONFIG_VERSION,
-        "motion_sensors": ["binary_sensor.kitchen_motion"],
-        "timeout_seconds": 300,
+        "default_timeout": 300,
+        "default_trailing_timeout": 120,
+        "occupancy_strategy": "independent",
+        "contributes_to_parent": True,
     },
 )
 
@@ -241,13 +281,13 @@ bus.publish(
             "source_id": "binary_sensor.kitchen_motion",
             "timeout": 300,
         },
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
     )
 )
 
 # 5. Query occupancy state (implementation-dependent)
 state = occupancy.get_location_state("kitchen")
-print(state.occupied, state.confidence)
+print(state["occupied"] if state else None)
 ```
 
 In a Home Assistant integration, you'd:
@@ -265,16 +305,12 @@ In a Home Assistant integration, you'd:
 `home-topology` is **not** a Home Assistant custom component.
 It's a pure Python library that can *back* a HA integration (and other platforms).
 
-A typical HA setup would add:
+A typical HA setup would add a custom integration (for example `custom_components/topomation/`) that:
 
-* `custom_components/home_topology/`
-
-  * Uses this library to:
-
-    * Build a location graph from HA Areas / devices / entities.
-    * Feed HA events into the Event Bus.
-    * Expose module state (e.g., occupancy sensors) back to HA.
-    * Provide a UI for Locations and their modules (with an "Unassigned/Inbox" view for entities).
+* Builds a location graph from HA Areas / devices / entities.
+* Feeds HA events into the Event Bus.
+* Exposes module state (e.g., occupancy sensors) back to HA.
+* Provides a UI for Locations and their modules (with an "Unassigned/Inbox" view for entities).
 
 **Building an integration?** See the complete **[Integration Guide](./docs/integration/integration-guide.md)** for step-by-step instructions, patterns, and a full Home Assistant example.
 
