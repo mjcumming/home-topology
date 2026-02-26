@@ -96,6 +96,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Release pipeline modernization (2026-02-26)**:
+  - CI now runs on Python 3.12/3.13 and includes `isort` checks.
+  - Release workflow now creates GitHub Releases from tags and publishes via PyPI trusted publishing (OIDC).
+  - Release notes are extracted from `CHANGELOG.md` during tagged releases.
+  - Added security workflow (CodeQL + dependency review).
+- **Packaging version normalization**:
+  - Updated project version string to PEP 440 format (`0.2.0a0`) for PyPI compatibility.
+
 - **Occupancy engine lock evaluation** now computes effective locks via
   inherited subtree directives rather than lock-copy fanout.
 - **Freeze semantics** now suspend and resume contributions/timers while lock is

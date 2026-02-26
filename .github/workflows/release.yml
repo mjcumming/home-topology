@@ -1,37 +1,79 @@
-name: Release
+name: Release and Publish
 
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v0.2.0-alpha
+      - "v*"  # Trigger on version tags like v0.2.0a0
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
+  release:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write
+      id-token: write
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
-    
+        python-version: "3.12"
+        cache: "pip"
+
+    - name: Verify tag matches pyproject version
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        PROJECT_VERSION=$(python - <<'PY'
+        import tomllib
+        from pathlib import Path
+        data = tomllib.loads(Path("pyproject.toml").read_text())
+        print(data["project"]["version"])
+        PY
+        )
+        echo "Tag version: ${TAG_VERSION}"
+        echo "Project version: ${PROJECT_VERSION}"
+        test "${TAG_VERSION}" = "${PROJECT_VERSION}" || (echo "Tag version and project version do not match" && exit 1)
+
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine
-    
+
     - name: Build package
-      run: python -m build
-    
+      run: |
+        python -m build
+
     - name: Check package
       run: twine check dist/*
-    
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
 
+    - name: Extract release notes from CHANGELOG
+      id: changelog
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        LEGACY_VERSION=$(echo "$VERSION" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)a([0-9]+)/\1-alpha/')
+        NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
+        if [ -z "$NOTES" ]; then
+          NOTES=$(awk "/^## \[$LEGACY_VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
+        fi
+        if [ -z "$NOTES" ]; then
+          NOTES="Release $VERSION"
+        fi
+        echo "notes<<EOF" >> $GITHUB_OUTPUT
+        echo "$NOTES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: Release ${{ github.ref_name }}
+        body: ${{ steps.changelog.outputs.notes }}
+        draft: false
+        prerelease: false
+        files: |
+          dist/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
