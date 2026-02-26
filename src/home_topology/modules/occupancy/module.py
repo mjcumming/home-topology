@@ -11,7 +11,8 @@ from home_topology.core.manager import LocationManager
 from home_topology.modules.base import LocationModule
 
 from .engine import OccupancyEngine
-from .models import EventType, LocationConfig, OccupancyEvent, OccupancyStrategy
+from .models import (EventType, LocationConfig, LockMode, LockScope,
+                     OccupancyEvent, OccupancyStrategy)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,11 @@ class OccupancyModule(LocationModule):
                     default_timeout = timeouts.get("default", default_timeout)
                     default_trailing_timeout = timeouts.get("presence", default_trailing_timeout)
 
-            strategy_str = config_dict.get("occupancy_strategy", "independent") if config_dict else "independent"
+            strategy_str = (
+                config_dict.get("occupancy_strategy", "independent")
+                if config_dict
+                else "independent"
+            )
             strategy = (
                 OccupancyStrategy.FOLLOW_PARENT
                 if strategy_str == "follow_parent"
@@ -143,11 +148,21 @@ class OccupancyModule(LocationModule):
                 try:
                     timeout = int(raw_timeout)
                 except (TypeError, ValueError):
-                    logger.warning("Ignoring occupancy.signal with invalid timeout: %s", raw_timeout)
+                    logger.warning(
+                        "Ignoring occupancy.signal with invalid timeout: %s", raw_timeout
+                    )
                     return None
                 if timeout < 0:
-                    logger.warning("Ignoring occupancy.signal with negative timeout: %s", raw_timeout)
+                    logger.warning(
+                        "Ignoring occupancy.signal with negative timeout: %s", raw_timeout
+                    )
                     return None
+
+        lock_mode = LockMode.FREEZE
+        lock_scope = LockScope.SELF
+        if event_type == EventType.LOCK:
+            lock_mode = self._parse_lock_mode(payload.get("lock_mode", LockMode.FREEZE.value))
+            lock_scope = self._parse_lock_scope(payload.get("lock_scope", LockScope.SELF.value))
 
         source_id = payload.get("source_id") or event.entity_id or event.source
         location_id = event.location_id or payload.get("location_id")
@@ -170,6 +185,8 @@ class OccupancyModule(LocationModule):
             timestamp=self._normalize_timestamp(event.timestamp),
             timeout=timeout,
             timeout_set=timeout_set,
+            lock_mode=lock_mode,
+            lock_scope=lock_scope,
         )
 
     def _parse_event_type(self, value: Any) -> Optional[EventType]:
@@ -193,6 +210,30 @@ class OccupancyModule(LocationModule):
         except KeyError:
             return None
 
+    def _parse_lock_mode(self, value: Any) -> LockMode:
+        """Parse lock mode from value/name to LockMode."""
+        if isinstance(value, LockMode):
+            return value
+        if not isinstance(value, str):
+            return LockMode.FREEZE
+        normalized = value.strip().lower()
+        try:
+            return LockMode(normalized)
+        except ValueError:
+            return LockMode.FREEZE
+
+    def _parse_lock_scope(self, value: Any) -> LockScope:
+        """Parse lock scope from value/name to LockScope."""
+        if isinstance(value, LockScope):
+            return value
+        if not isinstance(value, str):
+            return LockScope.SELF
+        normalized = value.strip().lower()
+        try:
+            return LockScope(normalized)
+        except ValueError:
+            return LockScope.SELF
+
     def _emit_occupancy_changed(self, transition: Any) -> None:
         """Emit semantic occupancy.changed event."""
         assert self._bus is not None
@@ -208,6 +249,20 @@ class OccupancyModule(LocationModule):
                     "occupied": new_state.is_occupied,
                     "locked_by": list(new_state.locked_by),
                     "is_locked": new_state.is_locked,
+                    "lock_modes": [
+                        mode.value for mode in sorted(new_state.lock_modes, key=lambda m: m.value)
+                    ],
+                    "direct_locks": [
+                        {
+                            "source_id": lock.source_id,
+                            "mode": lock.mode.value,
+                            "scope": lock.scope.value,
+                        }
+                        for lock in sorted(
+                            new_state.direct_locks,
+                            key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
+                        )
+                    ],
                     "contributions": [
                         {
                             "source_id": contribution.source_id,
@@ -268,10 +323,24 @@ class OccupancyModule(LocationModule):
             "occupied": state.is_occupied,
             "locked_by": list(state.locked_by),
             "is_locked": state.is_locked,
+            "lock_modes": [mode.value for mode in sorted(state.lock_modes, key=lambda m: m.value)],
+            "direct_locks": [
+                {
+                    "source_id": lock.source_id,
+                    "mode": lock.mode.value,
+                    "scope": lock.scope.value,
+                }
+                for lock in sorted(
+                    state.direct_locks,
+                    key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
+                )
+            ],
             "contributions": [
                 {
                     "source_id": contribution.source_id,
-                    "expires_at": contribution.expires_at.isoformat() if contribution.expires_at else None,
+                    "expires_at": (
+                        contribution.expires_at.isoformat() if contribution.expires_at else None
+                    ),
                 }
                 for contribution in sorted(state.contributions, key=lambda c: c.source_id)
             ],
@@ -438,19 +507,31 @@ class OccupancyModule(LocationModule):
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
 
-    def lock(self, location_id: str, source_id: str, now: Optional[datetime] = None) -> None:
-        """Freeze current state (add lock from this source)."""
+    def lock(
+        self,
+        location_id: str,
+        source_id: str,
+        mode: LockMode | str = LockMode.FREEZE,
+        scope: LockScope | str = LockScope.SELF,
+        now: Optional[datetime] = None,
+    ) -> None:
+        """Apply/update a lock directive for a source."""
         assert self._engine is not None
         if now is None:
             now = datetime.now(UTC)
         else:
             now = self._normalize_timestamp(now)
 
+        parsed_mode = self._parse_lock_mode(mode)
+        parsed_scope = self._parse_lock_scope(scope)
+
         event = OccupancyEvent(
             location_id=location_id,
             event_type=EventType.LOCK,
             source_id=source_id,
             timestamp=now,
+            lock_mode=parsed_mode,
+            lock_scope=parsed_scope,
         )
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:

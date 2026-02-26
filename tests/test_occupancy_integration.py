@@ -107,7 +107,9 @@ def test_motion_signal_triggers_and_propagates(
     kitchen_state = occupancy_module.get_location_state("kitchen")
     assert kitchen_state is not None
     assert kitchen_state["occupied"] is True
-    assert any(c["source_id"] == "binary_sensor.kitchen_motion" for c in kitchen_state["contributions"])
+    assert any(
+        c["source_id"] == "binary_sensor.kitchen_motion" for c in kitchen_state["contributions"]
+    )
 
 
 def test_clear_signal_with_trailing_timeout(
@@ -129,7 +131,9 @@ def test_clear_signal_with_trailing_timeout(
     assert trailing["expires_at"] is not None
 
 
-def test_state_persistence(occupancy_module: OccupancyModule, location_manager: LocationManager, event_bus: EventBus) -> None:
+def test_state_persistence(
+    occupancy_module: OccupancyModule, location_manager: LocationManager, event_bus: EventBus
+) -> None:
     now = datetime.now(UTC)
     occupancy_module.trigger("kitchen", "binary_sensor.kitchen_motion", now=now)
     dumped = occupancy_module.dump_state()

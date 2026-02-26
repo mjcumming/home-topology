@@ -7,8 +7,7 @@ Defines rules, triggers, conditions, and actions for automation.
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
-from typing import Any, Dict, List, Optional, FrozenSet
-
+from typing import Any, Dict, FrozenSet, List, Optional
 
 # =============================================================================
 # Enums

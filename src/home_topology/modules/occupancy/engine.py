@@ -6,26 +6,18 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from .models import (
-    EngineResult,
-    EventType,
-    LocationConfig,
-    LocationRuntimeState,
-    OccupancyEvent,
-    OccupancyStrategy,
-    REASON_EVENT_PREFIX,
-    REASON_PROPAGATION_CHILD_PREFIX,
-    REASON_PROPAGATION_PARENT,
-    REASON_TIMEOUT,
-    SourceContribution,
-    StateTransition,
-    SuspendedContribution,
-)
+from .models import (REASON_EVENT_PREFIX, REASON_PROPAGATION_CHILD_PREFIX,
+                     REASON_PROPAGATION_PARENT, REASON_TIMEOUT, EngineResult,
+                     EventType, LocationConfig, LocationRuntimeState,
+                     LockDirective, LockMode, LockScope, OccupancyEvent,
+                     OccupancyStrategy, SourceContribution, StateTransition,
+                     SuspendedContribution)
 
 _LOGGER = logging.getLogger(__name__)
 
 _CHILD_PREFIX = "__child__"
 _FOLLOW_PREFIX = "__follow_parent__"
+_LOCK_HOLD_PREFIX = "__lock_hold__"
 
 
 class OccupancyEngine:
@@ -59,6 +51,11 @@ class OccupancyEngine:
 
         transitions: list[StateTransition] = []
         self._process_location_update(event.location_id, event, now, transitions)
+
+        # Lock scope can affect descendants even without direct events there.
+        if event.event_type in (EventType.LOCK, EventType.UNLOCK, EventType.UNLOCK_ALL):
+            for child_id in self._get_descendants(event.location_id):
+                self._process_location_update(child_id, None, now, transitions)
 
         return EngineResult(
             next_expiration=self._calculate_next_expiration(now),
@@ -135,44 +132,58 @@ class OccupancyEngine:
         config = self.configs[location_id]
         current_state = self.state[location_id]
 
-        next_locked_by = set(current_state.locked_by)
+        direct_lock_map = self._direct_lock_map(current_state.direct_locks)
+        if event and event.event_type == EventType.LOCK:
+            direct_lock_map[event.source_id] = LockDirective(
+                source_id=event.source_id,
+                mode=event.lock_mode,
+                scope=event.lock_scope,
+            )
+        elif event and event.event_type == EventType.UNLOCK:
+            direct_lock_map.pop(event.source_id, None)
+        elif event and event.event_type == EventType.UNLOCK_ALL:
+            direct_lock_map.clear()
+
+        effective_locks = self._effective_locks(location_id, direct_lock_map)
+        next_locked_by = {directive.source_id for directive in effective_locks}
+        next_lock_modes = {directive.mode for directive in effective_locks}
+
+        prev_freeze = LockMode.FREEZE in current_state.lock_modes
+        next_freeze = LockMode.FREEZE in next_lock_modes
         contrib_map = self._contrib_map(current_state.contributions)
         suspended_map = self._suspended_map(current_state.suspended_contributions)
 
         # Remove expired timed contributions.
         self._drop_expired(contrib_map, now)
 
-        if event and event.event_type == EventType.LOCK:
-            next_locked_by.add(event.source_id)
-            if not current_state.is_locked:
-                suspended_map = {
-                    source_id: (
-                        None
-                        if expires_at is None
-                        else max(timedelta(seconds=0), expires_at - now)
-                    )
-                    for source_id, expires_at in contrib_map.items()
-                }
-                contrib_map = {}
-
-        elif event and event.event_type == EventType.UNLOCK:
-            if event.source_id in next_locked_by:
-                next_locked_by.remove(event.source_id)
-            if not next_locked_by:
-                contrib_map = self._resume_contributions(suspended_map, now)
-                suspended_map = {}
-
-        elif event and event.event_type == EventType.UNLOCK_ALL:
-            next_locked_by.clear()
+        if not prev_freeze and next_freeze:
+            suspended_map = {
+                source_id: (
+                    None if expires_at is None else max(timedelta(seconds=0), expires_at - now)
+                )
+                for source_id, expires_at in contrib_map.items()
+            }
+            contrib_map = {}
+        elif prev_freeze and not next_freeze:
             contrib_map = self._resume_contributions(suspended_map, now)
             suspended_map = {}
 
-        # Ignore occupancy-changing events while locked.
-        elif current_state.is_locked and event is not None:
+        # Remove synthetic lock holds when their mode no longer applies.
+        if LockMode.BLOCK_VACANT not in next_lock_modes:
+            for source_id in [
+                sid for sid in contrib_map if sid.startswith(f"{_LOCK_HOLD_PREFIX}:")
+            ]:
+                contrib_map.pop(source_id, None)
+
+        # Freeze mode ignores occupancy-changing events until unlocked.
+        if (
+            next_freeze
+            and event is not None
+            and event.event_type not in (EventType.LOCK, EventType.UNLOCK, EventType.UNLOCK_ALL)
+        ):
             return False
 
-        # Unlocked event processing.
-        elif event and event.event_type == EventType.VACATE:
+        if event and event.event_type == EventType.VACATE:
             contrib_map.clear()
             suspended_map.clear()
 
@@ -182,7 +193,9 @@ class OccupancyEngine:
                 pass
             else:
                 timeout_value = self._get_trigger_timeout(event, config)
-                expires_at = None if timeout_value is None else now + timedelta(seconds=timeout_value)
+                expires_at = (
+                    None if timeout_value is None else now + timedelta(seconds=timeout_value)
+                )
                 contrib_map[event.source_id] = expires_at
 
         elif event and event.event_type == EventType.CLEAR:
@@ -203,7 +216,9 @@ class OccupancyEngine:
             if child_cfg and child_state:
                 child_source = self._child_source_id(propagated_from_child)
                 if child_cfg.contributes_to_parent and child_state.is_occupied:
-                    contrib_map[child_source] = self.get_effective_timeout(propagated_from_child, now)
+                    contrib_map[child_source] = self.get_effective_timeout(
+                        propagated_from_child, now
+                    )
                 else:
                     contrib_map.pop(child_source, None)
 
@@ -222,7 +237,19 @@ class OccupancyEngine:
             else:
                 contrib_map.pop(follow_source, None)
 
-        next_is_occupied = current_state.is_occupied if next_locked_by else bool(contrib_map)
+        if LockMode.BLOCK_OCCUPIED in next_lock_modes:
+            contrib_map.clear()
+            suspended_map.clear()
+            next_is_occupied = False
+        else:
+            if LockMode.BLOCK_VACANT in next_lock_modes and not contrib_map:
+                contrib_map[f"{_LOCK_HOLD_PREFIX}:{location_id}"] = None
+            if LockMode.BLOCK_VACANT in next_lock_modes:
+                next_is_occupied = True
+            elif next_freeze:
+                next_is_occupied = current_state.is_occupied
+            else:
+                next_is_occupied = bool(contrib_map)
 
         next_state = LocationRuntimeState(
             is_occupied=next_is_occupied,
@@ -235,6 +262,8 @@ class OccupancyEngine:
                 for sid, remaining in sorted(suspended_map.items())
             ),
             locked_by=frozenset(next_locked_by),
+            lock_modes=frozenset(next_lock_modes),
+            direct_locks=frozenset(direct_lock_map.values()),
         )
 
         if next_state == current_state:
@@ -256,7 +285,7 @@ class OccupancyEngine:
         next_exp: datetime | None = None
 
         for state in self.state.values():
-            if state.is_locked:
+            if LockMode.FREEZE in state.lock_modes:
                 continue
 
             for contribution in state.contributions:
@@ -294,7 +323,7 @@ class OccupancyEngine:
         for loc_id, state in self.state.items():
             if (
                 not state.is_occupied
-                and not state.is_locked
+                and not state.direct_locks
                 and not state.contributions
                 and not state.suspended_contributions
             ):
@@ -303,6 +332,24 @@ class OccupancyEngine:
             dump[loc_id] = {
                 "is_occupied": state.is_occupied,
                 "locked_by": list(state.locked_by),
+                "lock_modes": [
+                    mode.value for mode in sorted(state.lock_modes, key=lambda m: m.value)
+                ],
+                "direct_locks": [
+                    {
+                        "source_id": lock.source_id,
+                        "mode": lock.mode.value,
+                        "scope": lock.scope.value,
+                    }
+                    for lock in sorted(
+                        state.direct_locks,
+                        key=lambda lock_item: (
+                            lock_item.source_id,
+                            lock_item.mode.value,
+                            lock_item.scope.value,
+                        ),
+                    )
+                ],
                 "contributions": [
                     {
                         "source_id": c.source_id,
@@ -334,7 +381,33 @@ class OccupancyEngine:
             if loc_id not in self.configs:
                 continue
 
-            locked_by = frozenset(data.get("locked_by", []))
+            direct_locks: list[LockDirective] = []
+            for raw in data.get("direct_locks", []):
+                source_id = raw.get("source_id")
+                if not source_id:
+                    continue
+                try:
+                    mode = LockMode(str(raw.get("mode", LockMode.FREEZE.value)))
+                except ValueError:
+                    mode = LockMode.FREEZE
+                try:
+                    scope = LockScope(str(raw.get("scope", LockScope.SELF.value)))
+                except ValueError:
+                    scope = LockScope.SELF
+                direct_locks.append(LockDirective(source_id=source_id, mode=mode, scope=scope))
+
+            # Backward compatibility with v3 snapshots that persisted only locked_by.
+            if not direct_locks:
+                for source_id in data.get("locked_by", []):
+                    if not source_id:
+                        continue
+                    direct_locks.append(
+                        LockDirective(
+                            source_id=str(source_id),
+                            mode=LockMode.FREEZE,
+                            scope=LockScope.SELF,
+                        )
+                    )
 
             contributions: list[SourceContribution] = []
             for raw in data.get("contributions", []):
@@ -372,15 +445,22 @@ class OccupancyEngine:
                 suspended.append(SuspendedContribution(source_id=source_id, remaining=remaining))
 
             is_occupied = bool(contributions)
-            if data.get("is_occupied") and not contributions and locked_by:
+            if data.get("is_occupied") and not contributions and direct_locks:
                 is_occupied = True
 
             self.state[loc_id] = LocationRuntimeState(
                 is_occupied=is_occupied,
                 contributions=frozenset(contributions),
                 suspended_contributions=frozenset(suspended),
-                locked_by=locked_by,
+                locked_by=frozenset(lock.source_id for lock in direct_locks),
+                lock_modes=frozenset(lock.mode for lock in direct_locks),
+                direct_locks=frozenset(direct_locks),
             )
+
+        # Reconcile effective lock inheritance and resulting occupancy constraints.
+        reconcile_transitions: list[StateTransition] = []
+        for location_id in self.configs:
+            self._process_location_update(location_id, None, now, reconcile_transitions)
 
     def get_effective_timeout(self, location_id: str, now: datetime) -> datetime | None:
         """Get when location truly becomes vacant considering descendants."""
@@ -448,6 +528,9 @@ class OccupancyEngine:
                     now,
                     transitions,
                 )
+                if self.state[loc_id].is_locked:
+                    # Still locked due inherited subtree policy from an ancestor.
+                    continue
 
             self._process_location_update(
                 loc_id,
@@ -473,8 +556,37 @@ class OccupancyEngine:
             descendants.extend(self._get_descendants(child_id))
         return descendants
 
+    def _effective_locks(
+        self,
+        location_id: str,
+        location_override: dict[str, LockDirective] | None = None,
+    ) -> list[LockDirective]:
+        """Resolve direct + inherited subtree lock directives affecting a location."""
+        effective: list[LockDirective] = []
+        current_id: str | None = location_id
+        while current_id is not None:
+            state = self.state[current_id]
+            directives = (
+                location_override.values()
+                if current_id == location_id and location_override is not None
+                else state.direct_locks
+            )
+            for directive in directives:
+                if current_id == location_id or directive.scope == LockScope.SUBTREE:
+                    effective.append(directive)
+            current_id = self.configs[current_id].parent_id
+        return effective
+
     @staticmethod
-    def _contrib_map(contributions: set[SourceContribution] | frozenset[SourceContribution]) -> dict[str, datetime | None]:
+    def _direct_lock_map(
+        directives: set[LockDirective] | frozenset[LockDirective],
+    ) -> dict[str, LockDirective]:
+        return {directive.source_id: directive for directive in directives}
+
+    @staticmethod
+    def _contrib_map(
+        contributions: set[SourceContribution] | frozenset[SourceContribution],
+    ) -> dict[str, datetime | None]:
         return {c.source_id: c.expires_at for c in contributions}
 
     @staticmethod

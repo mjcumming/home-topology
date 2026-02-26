@@ -5,7 +5,7 @@ Provides intelligent ambient light detection with automatic sensor
 inheritance through the location hierarchy.
 """
 
-from .models import AmbientLightReading, AmbientLightConfig
+from .models import AmbientLightConfig, AmbientLightReading
 from .module import AmbientLightModule
 
 __all__ = [
@@ -13,4 +13,3 @@ __all__ = [
     "AmbientLightConfig",
     "AmbientLightModule",
 ]
-

@@ -17,16 +17,12 @@ Design Note:
 
 from typing import Optional
 
-from home_topology.modules.automation import (
-    AutomationRule,
-    EventTriggerConfig,
-    ServiceCallAction,
-    DelayAction,
-    TimeOfDayCondition,
-    LuxLevelCondition,
-    StateCondition,
-    ExecutionMode,
-)
+from home_topology.modules.automation import (AutomationRule, DelayAction,
+                                              EventTriggerConfig,
+                                              ExecutionMode, LuxLevelCondition,
+                                              ServiceCallAction,
+                                              StateCondition,
+                                              TimeOfDayCondition)
 
 # Default entity for darkness detection (Home Assistant sun entity)
 DEFAULT_DARK_ENTITY = "sun.sun"
@@ -103,11 +99,11 @@ def lights_on_when_occupied(
         conditions.append(LuxLevelCondition(entity_id=lux_sensor, below=lux_threshold))
     elif location_id:
         # Location-based with automatic sensor lookup (NEW)
-        conditions.append(LuxLevelCondition(
-            location_id=location_id,
-            inherit_from_parent=True,
-            below=lux_threshold
-        ))
+        conditions.append(
+            LuxLevelCondition(
+                location_id=location_id, inherit_from_parent=True, below=lux_threshold
+            )
+        )
     elif only_when_dark:
         # Use entity state for darkness check (fallback)
         conditions.append(StateCondition(entity_id=dark_entity, state=dark_state))
@@ -299,11 +295,11 @@ def adaptive_lighting(
     if lux_sensor:
         day_conditions.append(LuxLevelCondition(entity_id=lux_sensor, below=lux_threshold))
     elif location_id:
-        day_conditions.append(LuxLevelCondition(
-            location_id=location_id,
-            inherit_from_parent=True,
-            below=lux_threshold
-        ))
+        day_conditions.append(
+            LuxLevelCondition(
+                location_id=location_id, inherit_from_parent=True, below=lux_threshold
+            )
+        )
 
     rules.append(
         AutomationRule(

@@ -9,15 +9,9 @@ from home_topology import EventBus, LocationManager
 from home_topology.modules.occupancy import OccupancyModule
 from home_topology.modules.occupancy.engine import OccupancyEngine
 from home_topology.modules.occupancy.models import (
-    EventType,
-    LocationConfig,
-    OccupancyEvent,
-    OccupancyStrategy,
-    REASON_EVENT_PREFIX,
-    REASON_PROPAGATION_CHILD_PREFIX,
-    REASON_PROPAGATION_PARENT,
-    REASON_TIMEOUT,
-)
+    REASON_EVENT_PREFIX, REASON_PROPAGATION_CHILD_PREFIX,
+    REASON_PROPAGATION_PARENT, REASON_TIMEOUT, EventType, LocationConfig,
+    LockMode, LockScope, OccupancyEvent, OccupancyStrategy)
 
 
 @pytest.fixture
@@ -120,7 +114,9 @@ def test_parent_child_invariant(base_time: datetime) -> None:
     )
 
     engine.handle_event(
-        OccupancyEvent("kitchen", EventType.TRIGGER, "motion", base_time, timeout=300, timeout_set=True),
+        OccupancyEvent(
+            "kitchen", EventType.TRIGGER, "motion", base_time, timeout=300, timeout_set=True
+        ),
         base_time,
     )
 
@@ -137,7 +133,9 @@ def test_lock_suspend_resume_preserves_remaining_time(base_time: datetime) -> No
     engine = OccupancyEngine([LocationConfig(id="kitchen", default_timeout=60)])
 
     engine.handle_event(
-        OccupancyEvent("kitchen", EventType.TRIGGER, "motion", base_time, timeout=60, timeout_set=True),
+        OccupancyEvent(
+            "kitchen", EventType.TRIGGER, "motion", base_time, timeout=60, timeout_set=True
+        ),
         base_time,
     )
     engine.handle_event(
@@ -169,11 +167,15 @@ def test_get_effective_timeout_with_descendants(base_time: datetime) -> None:
     )
 
     engine.handle_event(
-        OccupancyEvent("kitchen", EventType.TRIGGER, "k_motion", base_time, timeout=120, timeout_set=True),
+        OccupancyEvent(
+            "kitchen", EventType.TRIGGER, "k_motion", base_time, timeout=120, timeout_set=True
+        ),
         base_time,
     )
     engine.handle_event(
-        OccupancyEvent("bedroom", EventType.TRIGGER, "b_motion", base_time, timeout=180, timeout_set=True),
+        OccupancyEvent(
+            "bedroom", EventType.TRIGGER, "b_motion", base_time, timeout=180, timeout_set=True
+        ),
         base_time,
     )
 
@@ -201,6 +203,26 @@ def test_restore_state_parses_naive_datetime() -> None:
     contribution = next(iter(engine.state["kitchen"].contributions))
     assert contribution.expires_at is not None
     assert contribution.expires_at.tzinfo is not None
+
+
+def test_restore_state_backward_compatible_locked_by() -> None:
+    engine = OccupancyEngine([LocationConfig(id="kitchen", default_timeout=60)])
+    snapshot = {
+        "kitchen": {
+            "is_occupied": True,
+            "locked_by": ["legacy_lock_source"],
+            "contributions": [],
+            "suspended_contributions": [],
+        }
+    }
+
+    now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
+    engine.restore_state(snapshot, now)
+
+    restored = engine.state["kitchen"]
+    assert restored.is_locked
+    assert "legacy_lock_source" in restored.locked_by
+    assert LockMode.FREEZE in restored.lock_modes
 
 
 def test_module_vacate_area(base_time: datetime) -> None:
@@ -247,7 +269,9 @@ def test_transition_reason_contract(base_time: datetime) -> None:
     )
 
     result = engine.handle_event(
-        OccupancyEvent("kitchen", EventType.TRIGGER, "motion", base_time, timeout=60, timeout_set=True),
+        OccupancyEvent(
+            "kitchen", EventType.TRIGGER, "motion", base_time, timeout=60, timeout_set=True
+        ),
         base_time,
     )
     reasons = {transition.reason for transition in result.transitions}
@@ -371,5 +395,124 @@ def test_follow_parent_invariant_across_event_interleavings(base_time: datetime)
 
         for name in order:
             engine.handle_event(event_factories[name](now), now)
-            assert engine.state["reading_nook"].is_occupied == engine.state["living_room"].is_occupied
+            assert (
+                engine.state["reading_nook"].is_occupied == engine.state["living_room"].is_occupied
+            )
             now += timedelta(seconds=1)
+
+
+def test_block_occupied_subtree_prevents_descendant_occupancy(base_time: datetime) -> None:
+    engine = OccupancyEngine(
+        [
+            LocationConfig(id="house", default_timeout=60),
+            LocationConfig(id="kitchen", parent_id="house", default_timeout=60),
+        ]
+    )
+
+    engine.handle_event(
+        OccupancyEvent(
+            "house",
+            EventType.LOCK,
+            "away_mode",
+            base_time,
+            lock_mode=LockMode.BLOCK_OCCUPIED,
+            lock_scope=LockScope.SUBTREE,
+        ),
+        base_time,
+    )
+    engine.handle_event(
+        OccupancyEvent(
+            "kitchen",
+            EventType.TRIGGER,
+            "k_motion",
+            base_time + timedelta(seconds=1),
+            timeout=60,
+            timeout_set=True,
+        ),
+        base_time + timedelta(seconds=1),
+    )
+
+    assert not engine.state["kitchen"].is_occupied
+    assert LockMode.BLOCK_OCCUPIED in engine.state["kitchen"].lock_modes
+    assert not engine.state["house"].is_occupied
+
+
+def test_block_vacant_subtree_holds_and_releases(base_time: datetime) -> None:
+    engine = OccupancyEngine(
+        [
+            LocationConfig(id="house", default_timeout=60),
+            LocationConfig(id="bathroom", parent_id="house", default_timeout=60),
+        ]
+    )
+
+    engine.handle_event(
+        OccupancyEvent(
+            "house",
+            EventType.LOCK,
+            "party_mode",
+            base_time,
+            lock_mode=LockMode.BLOCK_VACANT,
+            lock_scope=LockScope.SUBTREE,
+        ),
+        base_time,
+    )
+
+    assert engine.state["house"].is_occupied
+    assert engine.state["bathroom"].is_occupied
+
+    engine.handle_event(
+        OccupancyEvent("house", EventType.UNLOCK, "party_mode", base_time + timedelta(seconds=1)),
+        base_time + timedelta(seconds=1),
+    )
+
+    assert not engine.state["house"].is_occupied
+    assert not engine.state["bathroom"].is_occupied
+
+
+def test_freeze_subtree_suspends_and_resumes_child_timer(base_time: datetime) -> None:
+    engine = OccupancyEngine(
+        [
+            LocationConfig(id="house", default_timeout=60),
+            LocationConfig(id="kitchen", parent_id="house", default_timeout=60),
+        ]
+    )
+
+    engine.handle_event(
+        OccupancyEvent(
+            "kitchen",
+            EventType.TRIGGER,
+            "motion",
+            base_time,
+            timeout=60,
+            timeout_set=True,
+        ),
+        base_time,
+    )
+
+    lock_time = base_time + timedelta(seconds=10)
+    engine.handle_event(
+        OccupancyEvent(
+            "house",
+            EventType.LOCK,
+            "sleep_mode",
+            lock_time,
+            lock_mode=LockMode.FREEZE,
+            lock_scope=LockScope.SUBTREE,
+        ),
+        lock_time,
+    )
+
+    kitchen_locked = engine.state["kitchen"]
+    assert kitchen_locked.is_occupied
+    assert not kitchen_locked.contributions
+    assert kitchen_locked.suspended_contributions
+
+    unlock_time = base_time + timedelta(seconds=20)
+    engine.handle_event(
+        OccupancyEvent("house", EventType.UNLOCK, "sleep_mode", unlock_time),
+        unlock_time,
+    )
+
+    kitchen_resumed = engine.state["kitchen"]
+    contribution = next(iter(kitchen_resumed.contributions))
+    assert contribution.expires_at == unlock_time + timedelta(seconds=50)
