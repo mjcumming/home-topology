@@ -4,13 +4,12 @@ Tests for the Ambient Light Module.
 Tests hierarchical sensor lookup, fallback strategies, and configuration.
 """
 
-import pytest
 from unittest.mock import Mock
 
-from home_topology.modules.ambient import (
-    AmbientLightModule,
-)
-from home_topology.core import LocationManager, EventBus
+import pytest
+
+from home_topology.core import EventBus, LocationManager
+from home_topology.modules.ambient import AmbientLightModule
 
 
 @pytest.fixture

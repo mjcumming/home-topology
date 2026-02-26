@@ -920,6 +920,44 @@ Move to integration repo:
 
 ---
 
+### ADR-028: Lock mode/scope policy model for occupancy (2026-02-25)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- `LOCK` previously represented only local freeze semantics
+- Real automation use cases need explicit intent:
+  - away/security: prevent occupied transitions
+  - party/manual hold: prevent vacant transitions
+- Integrations need deterministic subtree behavior without lock-copy fanout
+
+**Decision**:
+Extend occupancy lock directives with:
+- `mode`: `freeze | block_occupied | block_vacant`
+- `scope`: `self | subtree`
+
+Behavior rules:
+1. Locks remain source-aware (`source_id`) and deterministic for unlock.
+2. Scope is resolved as inherited policy evaluation (ancestor subtree locks apply to descendants).
+3. No physical lock-copy propagation to children.
+4. `unlock_all(location_id)` force-clears direct lock sources for the target location.
+5. Backward compatibility:
+   - Existing `lock(location_id, source_id)` == `mode=freeze`, `scope=self`.
+   - Legacy persisted `locked_by` snapshots restore as freeze/self directives.
+
+**Consequences**:
+- ✅ Core model can represent away/security and party/manual hold natively
+- ✅ Integration/UI can express policy intent without ad-hoc behavior layers
+- ✅ Existing integrations remain compatible with default lock call shape
+- ⚠️ Mixed lock modes can create policy conflicts; operator naming discipline is required
+- ⚠️ `unlock_all` does not clear inherited ancestor directives when called on a child
+
+**Alternatives Considered**:
+- Keep freeze-only lock: Rejected - does not model policy-intent use cases
+- Copy locks to descendants on write: Rejected - stale lock cleanup and fanout complexity
+
+---
+
 ## Rejected Decisions
 
 ### REJECTED: Adapter Layer for Occupancy

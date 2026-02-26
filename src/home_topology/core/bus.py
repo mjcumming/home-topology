@@ -4,12 +4,12 @@ Event Bus implementation for location-aware event routing.
 The Event Bus is a simple, synchronous dispatcher for domain events.
 """
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
-from typing import Optional, Dict, Any, Callable, List
+from datetime import UTC, datetime
+from typing import Any, Callable, Dict, List, Optional
 
 from home_topology.core.manager import LocationManager
-import logging
 
 logger = logging.getLogger(__name__)
 

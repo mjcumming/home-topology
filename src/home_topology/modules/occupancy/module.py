@@ -11,8 +11,14 @@ from home_topology.core.manager import LocationManager
 from home_topology.modules.base import LocationModule
 
 from .engine import OccupancyEngine
-from .models import (EventType, LocationConfig, LockMode, LockScope,
-                     OccupancyEvent, OccupancyStrategy)
+from .models import (
+    EventType,
+    LocationConfig,
+    LockMode,
+    LockScope,
+    OccupancyEvent,
+    OccupancyStrategy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -429,7 +435,7 @@ class OccupancyModule(LocationModule):
         self,
         location_id: str,
         source_id: str,
-        timeout: int | None | object = _UNSET,
+        timeout: Any = _UNSET,
         now: Optional[datetime] = None,
     ) -> None:
         """Send a TRIGGER event (source contributes occupancy)."""
@@ -440,8 +446,12 @@ class OccupancyModule(LocationModule):
             now = self._normalize_timestamp(now)
 
         timeout_set = timeout is not _UNSET
-        timeout_value = None if timeout is _UNSET else timeout
-        self._validate_timeout_value("timeout", timeout_value, allow_none=True)
+        timeout_value: int | None
+        if timeout is _UNSET:
+            timeout_value = None
+        else:
+            self._validate_timeout_value("timeout", timeout, allow_none=True)
+            timeout_value = None if timeout is None else int(timeout)
 
         event = OccupancyEvent(
             location_id=location_id,
@@ -459,7 +469,7 @@ class OccupancyModule(LocationModule):
         self,
         location_id: str,
         source_id: str,
-        trailing_timeout: int | None | object = _UNSET,
+        trailing_timeout: Any = _UNSET,
         now: Optional[datetime] = None,
     ) -> None:
         """Send a CLEAR event (source stops contributing)."""
@@ -470,10 +480,12 @@ class OccupancyModule(LocationModule):
             now = self._normalize_timestamp(now)
 
         timeout_set = trailing_timeout is not _UNSET
-        timeout_value = None if trailing_timeout is _UNSET else trailing_timeout
-        self._validate_timeout_value("trailing_timeout", timeout_value, allow_none=True)
-        if timeout_value is not None:
-            timeout_value = int(timeout_value)
+        timeout_value: int | None
+        if trailing_timeout is _UNSET:
+            timeout_value = None
+        else:
+            self._validate_timeout_value("trailing_timeout", trailing_timeout, allow_none=True)
+            timeout_value = None if trailing_timeout is None else int(trailing_timeout)
 
         event = OccupancyEvent(
             location_id=location_id,

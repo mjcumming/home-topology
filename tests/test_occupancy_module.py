@@ -155,6 +155,19 @@ def test_vacate_area_cascades(occupancy_module: OccupancyModule) -> None:
         assert state["occupied"] is False
 
 
+def test_lock_mode_scope_subtree_blocks_child_trigger(occupancy_module: OccupancyModule) -> None:
+    now = datetime(2025, 1, 1, tzinfo=UTC)
+    occupancy_module.lock("house", "away_mode", mode="block_occupied", scope="subtree", now=now)
+    occupancy_module.trigger("kitchen", "motion", timeout=60, now=now + timedelta(seconds=1))
+
+    kitchen = occupancy_module.get_location_state("kitchen")
+    house = occupancy_module.get_location_state("house")
+    assert kitchen is not None and house is not None
+    assert kitchen["occupied"] is False
+    assert house["occupied"] is False
+    assert "away_mode" in kitchen["locked_by"]
+
+
 def test_occupancy_changed_payload_contains_contributions(
     event_bus: EventBus,
     occupancy_module: OccupancyModule,

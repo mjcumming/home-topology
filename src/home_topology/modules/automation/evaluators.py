@@ -6,21 +6,22 @@ Each evaluator checks whether a specific condition type is met.
 
 import logging
 from datetime import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence
 
 from .models import (
     ConditionConfig,
-    TimeOfDayCondition,
-    StateCondition,
-    NumericStateCondition,
-    LuxLevelCondition,
-    LocationOccupiedCondition,
     DayOfWeekCondition,
+    LocationOccupiedCondition,
+    LuxLevelCondition,
+    NumericStateCondition,
+    StateCondition,
+    TimeOfDayCondition,
 )
 
 if TYPE_CHECKING:
-    from .adapter import PlatformAdapter
     from home_topology.modules.occupancy import OccupancyModule
+
+    from .adapter import PlatformAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class ConditionEvaluator:
             logger.warning(f"Unknown condition type: {type(condition)}")
             return False
 
-    def evaluate_all(self, conditions: list[ConditionConfig]) -> bool:
+    def evaluate_all(self, conditions: Sequence[ConditionConfig]) -> bool:
         """
         Evaluate all conditions (AND logic).
 
@@ -163,7 +164,7 @@ class ConditionEvaluator:
             logger.warning(f"Location not found: {condition.location_id}")
             return False
 
-        actual_occupied = state.get("occupied", False)
+        actual_occupied = bool(state.get("occupied", False))
         return actual_occupied == condition.occupied
 
     def _check_day_of_week(self, condition: DayOfWeekCondition) -> bool:

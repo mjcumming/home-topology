@@ -20,8 +20,8 @@ Use Cases:
 - Notifications ("Sarah just arrived home")
 """
 
-from .module import PresenceModule
 from .models import Person, PresenceChange
+from .module import PresenceModule
 
 __all__ = [
     "PresenceModule",

@@ -4,9 +4,9 @@ LocationManager for topology and configuration management.
 The LocationManager owns the topology and config, not the behavior.
 """
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
-import logging
 
 from home_topology.core.location import Location
 

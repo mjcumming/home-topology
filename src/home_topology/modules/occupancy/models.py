@@ -25,8 +25,8 @@ class EventType(Enum):
 
     # Commands (from automations/UI)
     VACATE = "vacate"  # Force vacant immediately
-    LOCK = "lock"  # Add source to locked_by
-    UNLOCK = "unlock"  # Remove source from locked_by
+    LOCK = "lock"  # Add/update lock policy for this source
+    UNLOCK = "unlock"  # Remove lock policy for this source
     UNLOCK_ALL = "unlock_all"  # Clear all locks
 
 
@@ -35,6 +35,21 @@ class OccupancyStrategy(Enum):
 
     INDEPENDENT = "independent"
     FOLLOW_PARENT = "follow_parent"
+
+
+class LockMode(Enum):
+    """Lock intent applied by a source."""
+
+    FREEZE = "freeze"
+    BLOCK_OCCUPIED = "block_occupied"
+    BLOCK_VACANT = "block_vacant"
+
+
+class LockScope(Enum):
+    """Scope for a lock intent."""
+
+    SELF = "self"
+    SUBTREE = "subtree"
 
 
 @dataclass(frozen=True)
@@ -66,18 +81,31 @@ class SuspendedContribution:
 
 
 @dataclass(frozen=True)
+class LockDirective:
+    """A source-defined lock policy at a specific location."""
+
+    source_id: str
+    mode: LockMode = LockMode.FREEZE
+    scope: LockScope = LockScope.SELF
+
+
+@dataclass(frozen=True)
 class LocationRuntimeState:
     """Runtime state for a location (immutable)."""
 
     is_occupied: bool = False
     contributions: FrozenSet[SourceContribution] = field(default_factory=frozenset)
     suspended_contributions: FrozenSet[SuspendedContribution] = field(default_factory=frozenset)
+    # Effective lock info for this location (includes inherited subtree locks).
     locked_by: FrozenSet[str] = field(default_factory=frozenset)
+    lock_modes: FrozenSet[LockMode] = field(default_factory=frozenset)
+    # Direct lock directives configured on this location only.
+    direct_locks: FrozenSet[LockDirective] = field(default_factory=frozenset)
 
     @property
     def is_locked(self) -> bool:
-        """Check if this location is locked (frozen)."""
-        return len(self.locked_by) > 0
+        """Check if any lock mode applies to this location."""
+        return len(self.lock_modes) > 0
 
 
 @dataclass(frozen=True)
@@ -90,6 +118,8 @@ class OccupancyEvent:
     timestamp: datetime
     timeout: int | None = None  # Seconds; None = indefinite for TRIGGER
     timeout_set: bool = False  # Distinguish explicit None from omitted timeout
+    lock_mode: LockMode = LockMode.FREEZE
+    lock_scope: LockScope = LockScope.SELF
 
 
 @dataclass(frozen=True)

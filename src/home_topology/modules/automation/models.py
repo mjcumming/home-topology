@@ -7,7 +7,7 @@ Defines rules, triggers, conditions, and actions for automation.
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Sequence
 
 # =============================================================================
 # Enums
@@ -150,7 +150,9 @@ class LuxLevelCondition:
     Common pattern: only turn on lights if lux < threshold.
     """
 
-    entity_id: str  # Lux sensor entity ID
+    entity_id: str = ""  # Lux sensor entity ID (explicit)
+    location_id: Optional[str] = None  # Optional location for adapter-level lookup
+    inherit_from_parent: bool = True
     below: Optional[float] = None  # Trigger if lux < this (e.g., 50)
     above: Optional[float] = None  # Trigger if lux > this
 
@@ -245,8 +247,8 @@ class AutomationRule:
     id: str
     enabled: bool
     trigger: TriggerConfig
-    conditions: List[ConditionConfig]
-    actions: List[ActionConfig]
+    conditions: Sequence[ConditionConfig]
+    actions: Sequence[ActionConfig]
     mode: ExecutionMode = ExecutionMode.RESTART
 
     def to_dict(self) -> Dict[str, Any]:
@@ -300,6 +302,8 @@ class AutomationRule:
             return {
                 "type": "lux_level",
                 "entity_id": c.entity_id,
+                "location_id": c.location_id,
+                "inherit_from_parent": c.inherit_from_parent,
                 "below": c.below,
                 "above": c.above,
             }
@@ -385,7 +389,9 @@ class AutomationRule:
             )
         elif condition_type == "lux_level":
             return LuxLevelCondition(
-                entity_id=data["entity_id"],
+                entity_id=data.get("entity_id", ""),
+                location_id=data.get("location_id"),
+                inherit_from_parent=data.get("inherit_from_parent", True),
                 below=data.get("below"),
                 above=data.get("above"),
             )

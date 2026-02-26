@@ -62,8 +62,8 @@ Your integration sends these events to the core:
 | Command | When to Send | Method |
 |---------|--------------|--------|
 | `VACATE` | Force vacant (light off, manual clear) | `vacate(location_id)` |
-| `LOCK` | Freeze state | `lock(location_id, source_id)` |
-| `UNLOCK` | Unfreeze state | `unlock(location_id, source_id)` |
+| `LOCK` | Apply lock policy (`freeze`, `block_occupied`, `block_vacant`) | `lock(location_id, source_id, mode, scope)` |
+| `UNLOCK` | Remove source lock policy | `unlock(location_id, source_id)` |
 | `UNLOCK_ALL` | Force unlock all | `unlock_all(location_id)` |
 
 ---
@@ -184,17 +184,24 @@ Freezes occupancy state. Multiple sources can lock independently.
 **Use Cases**: Sleep mode, vacation mode, manual override, cleaning mode, etc.
 
 ```python
-# Vacation mode - lock house as vacant
-module.lock(location_id="house", source_id="automation_vacation")
-# locked_by = {"automation_vacation"}
+# Vacation mode - block occupied transitions for full home subtree
+module.lock(
+    location_id="house",
+    source_id="automation_vacation",
+    mode="block_occupied",
+    scope="subtree",
+)
 
-# Another automation also locks
-module.lock(location_id="house", source_id="automation_away")
-# locked_by = {"automation_vacation", "automation_away"}
+# Party mode - hold occupied transitions on a floor
+module.lock(
+    location_id="main_floor",
+    source_id="automation_party",
+    mode="block_vacant",
+    scope="subtree",
+)
 
-# Away mode ends - still locked by vacation!
-module.unlock(location_id="house", source_id="automation_away")
-# locked_by = {"automation_vacation"}
+# Away mode ends
+module.unlock(location_id="house", source_id="automation_vacation")
 
 # Force unlock everything (user returns early)
 module.unlock_all(location_id="house")
@@ -566,7 +573,7 @@ def test_presence_with_motion_coverage_gap():
 | **Timeout Scheduling** | Call `check_timeouts()` at scheduled times |
 | **State Persistence** | Call `dump_state()` / `restore_state()` |
 | **UI** | Display Occupancy Sources, contributions, configuration |
-| **Commands** | Expose `vacate()`, `lock()`, `unlock()` as services |
+| **Commands** | Expose `vacate()`, `lock()`, `unlock()`, `unlock_all()` as services |
 
 ---
 

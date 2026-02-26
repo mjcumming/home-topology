@@ -7,10 +7,11 @@ and automatic fallback strategies.
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
 from home_topology.modules.base import LocationModule
-from .models import AmbientLightReading, AmbientLightConfig
+
+from .models import AmbientLightConfig, AmbientLightReading
 
 if TYPE_CHECKING:
     from home_topology.core import EventBus, LocationManager
@@ -32,7 +33,7 @@ class AmbientLightModule(LocationModule):
 
     CURRENT_CONFIG_VERSION = 1
 
-    def __init__(self, platform_adapter=None):
+    def __init__(self, platform_adapter: Any = None) -> None:
         """
         Initialize ambient light module.
 
@@ -44,6 +45,12 @@ class AmbientLightModule(LocationModule):
         self._location_manager: Optional["LocationManager"] = None
         self._sensor_cache: Dict[str, Optional[str]] = {}  # location_id → sensor_id
         self._last_readings: Dict[str, AmbientLightReading] = {}
+
+    def _require_location_manager(self) -> "LocationManager":
+        """Return location manager or raise if module is not attached."""
+        if self._location_manager is None:
+            raise RuntimeError("AmbientLightModule is not attached to a LocationManager")
+        return self._location_manager
 
     @property
     def id(self) -> str:
@@ -206,7 +213,7 @@ class AmbientLightModule(LocationModule):
 
         # 2. Walk up parent hierarchy if inherit=True
         if inherit and config.inherit_from_parent:
-            ancestors = self._location_manager.ancestors_of(location_id)
+            ancestors = self._require_location_manager().ancestors_of(location_id)
             for ancestor in ancestors:
                 sensor = self._find_lux_sensor_for_location(ancestor.id)
                 if sensor:
@@ -278,7 +285,7 @@ class AmbientLightModule(LocationModule):
         config = self._get_location_config(location_id)
         config.lux_sensor = entity_id
 
-        self._location_manager.set_module_config(location_id, self.id, config.to_dict())
+        self._require_location_manager().set_module_config(location_id, self.id, config.to_dict())
 
         # Update cache
         self._sensor_cache[location_id] = entity_id
@@ -302,7 +309,7 @@ class AmbientLightModule(LocationModule):
 
         # Walk up hierarchy if inherit=True
         if inherit:
-            ancestors = self._location_manager.ancestors_of(location_id)
+            ancestors = self._require_location_manager().ancestors_of(location_id)
             for ancestor in ancestors:
                 sensor = self._find_lux_sensor_for_location(ancestor.id)
                 if sensor:
@@ -319,7 +326,7 @@ class AmbientLightModule(LocationModule):
         """
         discovered = {}
 
-        for location in self._location_manager.all_locations():
+        for location in self._require_location_manager().all_locations():
             config = self._get_location_config(location.id)
 
             # Skip if auto-discover is disabled or sensor already configured
@@ -332,7 +339,9 @@ class AmbientLightModule(LocationModule):
                     discovered[location.id] = entity_id
                     # Update config
                     config.lux_sensor = entity_id
-                    self._location_manager.set_module_config(location.id, self.id, config.to_dict())
+                    self._require_location_manager().set_module_config(
+                        location.id, self.id, config.to_dict()
+                    )
                     logger.info(f"Auto-discovered lux sensor: {location.id} → {entity_id}")
                     break
 
@@ -356,7 +365,7 @@ class AmbientLightModule(LocationModule):
 
         # Auto-discover if enabled
         if config.auto_discover:
-            location = self._location_manager.get_location(location_id)
+            location = self._require_location_manager().get_location(location_id)
             if location:
                 for entity_id in location.entity_ids:
                     if self._is_lux_sensor(entity_id):
@@ -405,7 +414,10 @@ class AmbientLightModule(LocationModule):
         if not self._platform:
             return None
 
-        return self._platform.get_numeric_state(entity_id)
+        raw_value = self._platform.get_numeric_state(entity_id)
+        if raw_value is None:
+            return None
+        return cast(float, raw_value)
 
     # =============================================================================
     # Private Helpers - Configuration
@@ -413,7 +425,7 @@ class AmbientLightModule(LocationModule):
 
     def _get_location_config(self, location_id: str) -> AmbientLightConfig:
         """Get ambient light config for a location."""
-        config_dict = self._location_manager.get_module_config(location_id, self.id)
+        config_dict = self._require_location_manager().get_module_config(location_id, self.id)
 
         if config_dict:
             return AmbientLightConfig.from_dict(config_dict)

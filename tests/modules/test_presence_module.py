@@ -2,7 +2,7 @@
 
 import pytest
 
-from home_topology import LocationManager, EventBus, Event
+from home_topology import Event, EventBus, LocationManager
 from home_topology.modules.presence import PresenceModule
 
 

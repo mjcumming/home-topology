@@ -64,9 +64,9 @@ Commands are imperative actions, called directly by automations, services, or UI
 | Command | Behavior |
 |---------|----------|
 | `VACATE` | Force vacant. Immediately clears all source contributions. |
-| `LOCK` | Add source to `locked_by` set. State frozen when set non-empty. |
-| `UNLOCK` | Remove source from `locked_by` set. Unfrozen when empty. |
-| `UNLOCK_ALL` | Clear `locked_by` set entirely. Force unlock. |
+| `LOCK` | Add/update source lock directive (`mode` + `scope`). |
+| `UNLOCK` | Remove source lock directive from the target location. |
+| `UNLOCK_ALL` | Clear all direct lock directives on the target location. |
 
 ### API Methods
 
@@ -78,7 +78,7 @@ class OccupancyModule:
     
     # COMMANDS (from automations/UI)
     def vacate(self, location_id): ...
-    def lock(self, location_id, source_id): ...
+    def lock(self, location_id, source_id, mode="freeze", scope="self"): ...
     def unlock(self, location_id, source_id): ...
     def unlock_all(self, location_id): ...
 ```
@@ -311,23 +311,27 @@ occupancy_strategy: "follow_parent"
 
 ---
 
-## 9. Lock State (State Freeze)
+## 9. Lock Policies (Mode + Scope)
 
-Lock freezes the current occupancy state. Multiple sources can lock independently.
+Locks are source-tracked policy directives. A lock has:
 
-### Lock Behavior
+- `mode`: `freeze`, `block_occupied`, or `block_vacant`
+- `scope`: `self` or `subtree`
+
+Multiple sources can set directives independently.
+
+### Lock Behavior (source tracking)
 
 ```
-LOCK(source="vacation_mode") → locked_by = {"vacation_mode"}
-LOCK(source="cleaning_mode") → locked_by = {"vacation_mode", "cleaning_mode"}
-UNLOCK(source="vacation_mode") → locked_by = {"cleaning_mode"}  (still locked!)
-UNLOCK(source="cleaning_mode") → locked_by = {}  (unlocked)
-UNLOCK_ALL → locked_by = {}  (force unlock)
+LOCK(source="vacation_mode", mode="block_occupied", scope="subtree")
+LOCK(source="cleaning_mode", mode="freeze", scope="self")
+UNLOCK(source="vacation_mode")  # cleaning_mode still active
+UNLOCK_ALL()                    # clear all direct lock sources at this location
 ```
 
 ### Timer Suspension
 
-When locked with active contributions, timers are **suspended**, not cleared:
+When `mode=freeze` is active, contribution timers are **suspended**, not cleared:
 
 ```
 T+0:00  TRIGGER(10min)      → contribution expires T+10:00
@@ -338,17 +342,15 @@ T+15:00 Timer expires       → contribution removed, check if still occupied
 
 ### While Locked
 
-- Occupancy events (TRIGGER, CLEAR) are ignored
-- Commands (VACATE) are ignored
-- Only UNLOCK and UNLOCK_ALL commands are processed
-- Current state (occupied/vacant) is preserved
-- Contribution timers are suspended
+- `freeze`: ignores occupancy-changing events and preserves current occupied/vacant state
+- `block_occupied`: prevents transitions to occupied (away/security intent)
+- `block_vacant`: prevents transitions to vacant (party/manual hold intent)
 
-### No Lock Propagation
+### Scope Semantics
 
-- Locks are local to each location
-- No auto-propagate up or down the hierarchy
-- Integration can send LOCK to multiple locations if cascade desired
+- `scope=self`: applies only to the target location
+- `scope=subtree`: applies to target + descendants via inherited evaluation
+- No lock-copy fanout is performed; descendants evaluate ancestor subtree directives at runtime
 
 ### Use Cases
 
@@ -483,21 +485,27 @@ module.vacate(location_id="bedroom")
 ### Lock/Unlock Commands
 
 ```python
-# Sleep mode automation locks bedroom as occupied
-module.lock(location_id="bedroom", source_id="automation_sleep_mode")
-# locked_by = {"automation_sleep_mode"}
+# Away mode blocks occupancy from turning on anywhere under house
+module.lock(
+    location_id="house",
+    source_id="automation_away",
+    mode="block_occupied",
+    scope="subtree",
+)
 
-# Another automation also needs it locked
-module.lock(location_id="bedroom", source_id="automation_do_not_disturb")
-# locked_by = {"automation_sleep_mode", "automation_do_not_disturb"}
+# Party mode holds occupancy active on main floor
+module.lock(
+    location_id="main_floor",
+    source_id="automation_party_mode",
+    mode="block_vacant",
+    scope="subtree",
+)
 
-# Sleep mode ends - still locked by do_not_disturb!
-module.unlock(location_id="bedroom", source_id="automation_sleep_mode")
-# locked_by = {"automation_do_not_disturb"}
+# Party mode ends
+module.unlock(location_id="main_floor", source_id="automation_party_mode")
 
-# Force unlock everything (user override)
-module.unlock_all(location_id="bedroom")
-# locked_by = {}
+# Emergency reset
+module.unlock_all(location_id="house")
 ```
 
 ### Combined Scenario: Presence + Motion (Coverage Gap)

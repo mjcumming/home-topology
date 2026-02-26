@@ -1,19 +1,20 @@
 """Tests for the automation engine."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, UTC
 
 from home_topology.core.bus import Event
 from home_topology.modules.automation import (
-    MockPlatformAdapter,
     AutomationEngine,
     AutomationRule,
-    EventTriggerConfig,
-    TimeOfDayCondition,
-    StateCondition,
-    ServiceCallAction,
     DelayAction,
+    EventTriggerConfig,
     ExecutionMode,
+    MockPlatformAdapter,
+    ServiceCallAction,
+    StateCondition,
+    TimeOfDayCondition,
 )
 
 

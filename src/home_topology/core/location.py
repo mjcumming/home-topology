@@ -5,7 +5,7 @@ A Location represents a logical space in the home: a room, floor, area, or virtu
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass

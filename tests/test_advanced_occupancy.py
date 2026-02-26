@@ -9,9 +9,17 @@ from home_topology import EventBus, LocationManager
 from home_topology.modules.occupancy import OccupancyModule
 from home_topology.modules.occupancy.engine import OccupancyEngine
 from home_topology.modules.occupancy.models import (
-    REASON_EVENT_PREFIX, REASON_PROPAGATION_CHILD_PREFIX,
-    REASON_PROPAGATION_PARENT, REASON_TIMEOUT, EventType, LocationConfig,
-    LockMode, LockScope, OccupancyEvent, OccupancyStrategy)
+    REASON_EVENT_PREFIX,
+    REASON_PROPAGATION_CHILD_PREFIX,
+    REASON_PROPAGATION_PARENT,
+    REASON_TIMEOUT,
+    EventType,
+    LocationConfig,
+    LockMode,
+    LockScope,
+    OccupancyEvent,
+    OccupancyStrategy,
+)
 
 
 @pytest.fixture

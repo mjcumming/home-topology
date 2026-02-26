@@ -62,8 +62,8 @@ Your integration sends these events to the core:
 | Command | When to Send | Method |
 |---------|--------------|--------|
 | `VACATE` | Force vacant (light off, manual clear) | `vacate(location_id)` |
-| `LOCK` | Freeze state | `lock(location_id, source_id)` |
-| `UNLOCK` | Unfreeze state | `unlock(location_id, source_id)` |
+| `LOCK` | Apply lock policy | `lock(location_id, source_id, mode, scope)` |
+| `UNLOCK` | Remove source lock policy | `unlock(location_id, source_id)` |
 | `UNLOCK_ALL` | Force unlock all | `unlock_all(location_id)` |
 
 ### Timeout Validation

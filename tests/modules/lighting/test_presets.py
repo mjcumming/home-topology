@@ -1,18 +1,18 @@
 """Tests for lighting presets."""
 
-from home_topology.modules.lighting import (
-    lights_on_when_occupied,
-    lights_off_when_vacant,
-    scene_when_occupied,
-    adaptive_lighting,
-)
 from home_topology.modules.automation import (
-    EventTriggerConfig,
-    ServiceCallAction,
     DelayAction,
-    TimeOfDayCondition,
+    EventTriggerConfig,
     LuxLevelCondition,
+    ServiceCallAction,
     StateCondition,
+    TimeOfDayCondition,
+)
+from home_topology.modules.lighting import (
+    adaptive_lighting,
+    lights_off_when_vacant,
+    lights_on_when_occupied,
+    scene_when_occupied,
 )
 
 

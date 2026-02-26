@@ -1,8 +1,8 @@
 """Data models for PresenceModule."""
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
 from datetime import datetime
+from typing import Dict, List, Optional
 
 
 @dataclass

@@ -140,8 +140,8 @@ occupancy.clear("kitchen", "binary_sensor.presence", trailing_timeout=120)
 
 ```python
 occupancy.vacate("kitchen")
-occupancy.lock("kitchen", "automation_123")
-occupancy.unlock("kitchen", "automation_123")
+occupancy.lock("kitchen", "automation_away", mode="block_occupied", scope="subtree")
+occupancy.unlock("kitchen", "automation_away")
 occupancy.unlock_all("kitchen")
 occupancy.vacate_area("kitchen")  # Vacate + all descendants
 ```

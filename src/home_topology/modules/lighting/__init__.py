@@ -32,23 +32,23 @@ Common Use Cases:
 - Activate scenes based on occupancy
 """
 
-from .presets import (
-    lights_on_when_occupied,
-    lights_off_when_vacant,
-    scene_when_occupied,
-    adaptive_lighting,
-)
-
 # Re-export models commonly used with lighting
 from home_topology.modules.automation import (
     AutomationRule,
+    DelayAction,
     EventTriggerConfig,
-    TimeOfDayCondition,
-    StateCondition,
+    ExecutionMode,
     LuxLevelCondition,
     ServiceCallAction,
-    DelayAction,
-    ExecutionMode,
+    StateCondition,
+    TimeOfDayCondition,
+)
+
+from .presets import (
+    adaptive_lighting,
+    lights_off_when_vacant,
+    lights_on_when_occupied,
+    scene_when_occupied,
 )
 
 __all__ = [

@@ -2,7 +2,7 @@
 Basic smoke tests for home-topology core components.
 """
 
-from home_topology import Location, Event, EventBus, LocationManager
+from home_topology import Event, EventBus, Location, LocationManager
 
 
 def test_location_creation():

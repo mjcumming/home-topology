@@ -202,7 +202,7 @@ occupancy.clear(location_id, source_id, trailing_timeout)
 
 # Command methods (from automations/UI)
 occupancy.vacate(location_id)
-occupancy.lock(location_id, source_id)
+occupancy.lock(location_id, source_id, mode="freeze", scope="self")
 occupancy.unlock(location_id, source_id)
 occupancy.unlock_all(location_id)
 occupancy.vacate_area(location_id)  # Vacate location and all descendants
@@ -214,6 +214,8 @@ state = occupancy.get_location_state(location_id)
 #     "contributions": List[{"source_id": str, "expires_at": Optional[str]}],
 #     "locked_by": List[str],
 #     "is_locked": bool,
+#     "lock_modes": List[str],
+#     "direct_locks": List[{"source_id": str, "mode": str, "scope": str}],
 #     "suspended_contributions": List[{"source_id": str, "remaining": Optional[float]}]
 # }
 

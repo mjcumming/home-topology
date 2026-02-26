@@ -10,7 +10,9 @@ These tests verify:
 """
 
 import logging
+
 import pytest
+
 from home_topology import LocationManager
 
 # Configure logging for verbose test output

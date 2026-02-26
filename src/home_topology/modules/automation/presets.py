@@ -12,10 +12,10 @@ Domain-specific presets live in their respective modules:
 
 from .models import (
     AutomationRule,
-    EventTriggerConfig,
-    ServiceCallAction,
     DelayAction,
+    EventTriggerConfig,
     ExecutionMode,
+    ServiceCallAction,
 )
 
 
@@ -47,7 +47,7 @@ def switch_off_when_vacant(
             delay_seconds=300,  # 5 minutes
         )
     """
-    actions = []
+    actions: list[ServiceCallAction | DelayAction] = []
 
     if delay_seconds > 0:
         actions.append(DelayAction(seconds=delay_seconds))
@@ -96,7 +96,7 @@ def fan_off_when_vacant(
     # Determine domain from entity ID
     domain = "fan" if fan_entity.startswith("fan.") else "switch"
 
-    actions = []
+    actions: list[ServiceCallAction | DelayAction] = []
     if delay_seconds > 0:
         actions.append(DelayAction(seconds=delay_seconds))
 
@@ -148,7 +148,7 @@ def media_off_when_vacant(
             delay_seconds=900,  # 15 minutes
         )
     """
-    actions = []
+    actions: list[ServiceCallAction | DelayAction] = []
 
     if delay_seconds > 0:
         actions.append(DelayAction(seconds=delay_seconds))

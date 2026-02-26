@@ -1,12 +1,12 @@
 """PresenceModule - Track WHO is in each location."""
 
 import logging
-from datetime import datetime, UTC
-from typing import Optional, List, Dict
+from datetime import UTC, datetime
+from typing import Dict, List, Optional
 
-from home_topology.modules.base import LocationModule
 from home_topology.core.bus import Event, EventBus, EventFilter
 from home_topology.core.manager import LocationManager
+from home_topology.modules.base import LocationModule
 
 from .models import Person, PresenceChange
 

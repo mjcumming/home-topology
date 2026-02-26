@@ -7,26 +7,27 @@ Handles trigger matching, condition evaluation, and action execution.
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional
 
 from home_topology.core.bus import Event
 
+from .evaluators import ConditionEvaluator
 from .models import (
     AutomationRule,
-    RuleExecution,
+    DelayAction,
     EventTriggerConfig,
+    ExecutionMode,
+    RuleExecution,
+    ServiceCallAction,
     StateTriggerConfig,
     TimeTriggerConfig,
-    ServiceCallAction,
-    DelayAction,
-    ExecutionMode,
 )
-from .evaluators import ConditionEvaluator
 
 if TYPE_CHECKING:
-    from .adapter import PlatformAdapter
     from home_topology.modules.occupancy import OccupancyModule
+
+    from .adapter import PlatformAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +281,7 @@ class AutomationEngine:
             Number of actions executed
         """
         start_time = now
-        actions_executed = []
+        actions_executed: List[Dict[str, Any]] = []
         success = True
         error = None
 

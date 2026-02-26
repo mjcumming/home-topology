@@ -76,8 +76,8 @@ class EventType(Enum):
     
     # Commands (from automations/UI)
     VACATE = "vacate"        # Force vacant immediately
-    LOCK = "lock"            # Add source to locked_by set
-    UNLOCK = "unlock"        # Remove source from locked_by set
+    LOCK = "lock"            # Add/update source lock directive (mode + scope)
+    UNLOCK = "unlock"        # Remove source lock directive
     UNLOCK_ALL = "unlock_all"  # Clear all locks
 ```
 
@@ -88,9 +88,9 @@ class EventType(Enum):
 | **TRIGGER** | Source is contributing to occupancy. Timeout = when it expires. `None` = indefinite. |
 | **CLEAR** | Source stops contributing. Optional trailing timeout before fully clearing. |
 | **VACATE** | Force vacant. Clears all contributions immediately. |
-| **LOCK** | Freezes state. Adds source to `locked_by` set. |
-| **UNLOCK** | Removes source from `locked_by`. Unfrozen when set empty. |
-| **UNLOCK_ALL** | Clears `locked_by` entirely. Force unlock. |
+| **LOCK** | Applies `mode` + `scope` policy for source (freeze/block_occupied/block_vacant). |
+| **UNLOCK** | Removes source lock policy from target location. |
+| **UNLOCK_ALL** | Clears direct lock policies for target location. |
 
 ### Why TRIGGER + CLEAR Instead of TRIGGER/HOLD/RELEASE?
 
@@ -228,66 +228,62 @@ An alternative approach uses "lock levels" - an integer counter where LOCK incre
 
 ### Decision
 
-**Track WHO locked, not just a count.** Use `locked_by: set[str]` instead of `lock_level: int`.
+**Track WHO set lock policy, not just a count.** Use source-tracked directives instead of `lock_level: int`.
 
 ```python
 @dataclass(frozen=True)
-class LocationRuntimeState:
-    # ... other fields ...
-    locked_by: set[str] = field(default_factory=set)  # WHO locked this
+class LockDirective:
+    source_id: str
+    mode: LockMode          # freeze | block_occupied | block_vacant
+    scope: LockScope        # self | subtree
 ```
 
 ### Event Types for Locking
 
 | Event | Behavior |
 |-------|----------|
-| `LOCK` | Add `source_id` to `locked_by` set |
-| `UNLOCK` | Remove `source_id` from `locked_by` set |
-| `UNLOCK_ALL` | Clear `locked_by` set entirely |
+| `LOCK` | Add/update directive for `source_id` (mode + scope) |
+| `UNLOCK` | Remove directive for `source_id` |
+| `UNLOCK_ALL` | Clear all direct directives on target location |
 
 ### Lock State
 
 ```python
-is_locked = len(state.locked_by) > 0
+is_locked = len(state.lock_modes) > 0
 ```
 
 ### Rationale
 
-1. **Better debugging**: You can see WHO locked it, not just that it's locked
-2. **Independence**: Multiple systems can lock/unlock without stepping on each other
-3. **Safety**: `UNLOCK_ALL` for "reset everything" scenarios
-4. **Same functionality**: Achieves same result as lock levels, but more informative
+1. **Better debugging**: You can see WHO owns each policy lock
+2. **Independence**: Multiple systems can set/release policies without stepping on each other
+3. **Intent clarity**: `block_occupied` and `block_vacant` encode away/party behavior directly
+4. **Safety**: `UNLOCK_ALL` for emergency reset scenarios
 
 ### Example
 
 ```python
 # Sleep mode automation locks bedroom
-LOCK(source_id="automation_sleep_mode")
-# locked_by = {"automation_sleep_mode"}
+LOCK(source_id="automation_away", mode="block_occupied", scope="subtree")
 
 # Do-not-disturb also locks
-LOCK(source_id="automation_dnd")
-# locked_by = {"automation_sleep_mode", "automation_dnd"}
+LOCK(source_id="automation_party", mode="block_vacant", scope="subtree")
 
 # Sleep mode ends
-UNLOCK(source_id="automation_sleep_mode")
-# locked_by = {"automation_dnd"}  ← Still locked!
+UNLOCK(source_id="automation_away")
 
 # DND ends
-UNLOCK(source_id="automation_dnd")
-# locked_by = {}  ← Now unlocked
+UNLOCK(source_id="automation_party")
 
 # Or: Force clear all
 UNLOCK_ALL(source_id="user_override")
-# locked_by = {}
 ```
 
 ### No Lock Propagation
 
-- Locks are **local** to each location
-- No auto-propagate up or down
-- Integration can send LOCK to multiple locations if cascade is desired
-- Parent-child occupancy relationships are handled by normal hierarchy propagation (not locks)
+- Lock directives are stored locally on the target location
+- `scope=subtree` applies to descendants through inherited evaluation
+- No lock-copy fanout to child nodes
+- Parent-child occupancy relationships are still handled by normal hierarchy propagation
 
 ---
 
@@ -831,4 +827,3 @@ The UI should make it easy to choose the pattern:
 
 **Approved**: 2025-11-26  
 **Status**: Implementation Ready
-

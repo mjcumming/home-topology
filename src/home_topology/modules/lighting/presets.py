@@ -17,12 +17,16 @@ Design Note:
 
 from typing import Optional
 
-from home_topology.modules.automation import (AutomationRule, DelayAction,
-                                              EventTriggerConfig,
-                                              ExecutionMode, LuxLevelCondition,
-                                              ServiceCallAction,
-                                              StateCondition,
-                                              TimeOfDayCondition)
+from home_topology.modules.automation import (
+    AutomationRule,
+    DelayAction,
+    EventTriggerConfig,
+    ExecutionMode,
+    LuxLevelCondition,
+    ServiceCallAction,
+    StateCondition,
+    TimeOfDayCondition,
+)
 
 # Default entity for darkness detection (Home Assistant sun entity)
 DEFAULT_DARK_ENTITY = "sun.sun"
@@ -92,7 +96,7 @@ def lights_on_when_occupied(
             dark_state="on",
         )
     """
-    conditions = []
+    conditions: list[StateCondition | LuxLevelCondition] = []
 
     if lux_sensor:
         # Explicit lux sensor (backward compatible)
@@ -155,7 +159,7 @@ def lights_off_when_vacant(
             delay_seconds=60,
         )
     """
-    actions = []
+    actions: list[ServiceCallAction | DelayAction] = []
 
     if delay_seconds > 0:
         actions.append(DelayAction(seconds=delay_seconds))
@@ -210,7 +214,7 @@ def scene_when_occupied(
             only_when_dark=True,
         )
     """
-    conditions = []
+    conditions: list[StateCondition] = []
     if only_when_dark:
         conditions.append(StateCondition(entity_id=dark_entity, state=dark_state))
 
@@ -288,10 +292,12 @@ def adaptive_lighting(
         position changes, or use the simpler lights_on_when_occupied()
         with sun.sun state check.
     """
-    rules = []
+    rules: list[AutomationRule] = []
 
     # Daytime rule (day_start to evening_start)
-    day_conditions = [TimeOfDayCondition(after=day_start, before=evening_start)]
+    day_conditions: list[TimeOfDayCondition | LuxLevelCondition] = [
+        TimeOfDayCondition(after=day_start, before=evening_start)
+    ]
     if lux_sensor:
         day_conditions.append(LuxLevelCondition(entity_id=lux_sensor, below=lux_threshold))
     elif location_id:

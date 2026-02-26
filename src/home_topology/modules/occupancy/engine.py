@@ -6,12 +6,24 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from .models import (REASON_EVENT_PREFIX, REASON_PROPAGATION_CHILD_PREFIX,
-                     REASON_PROPAGATION_PARENT, REASON_TIMEOUT, EngineResult,
-                     EventType, LocationConfig, LocationRuntimeState,
-                     LockDirective, LockMode, LockScope, OccupancyEvent,
-                     OccupancyStrategy, SourceContribution, StateTransition,
-                     SuspendedContribution)
+from .models import (
+    REASON_EVENT_PREFIX,
+    REASON_PROPAGATION_CHILD_PREFIX,
+    REASON_PROPAGATION_PARENT,
+    REASON_TIMEOUT,
+    EngineResult,
+    EventType,
+    LocationConfig,
+    LocationRuntimeState,
+    LockDirective,
+    LockMode,
+    LockScope,
+    OccupancyEvent,
+    OccupancyStrategy,
+    SourceContribution,
+    StateTransition,
+    SuspendedContribution,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

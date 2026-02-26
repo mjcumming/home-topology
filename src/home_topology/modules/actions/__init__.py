@@ -21,6 +21,53 @@ Lighting-specific presets have moved to the lighting module.
 
 import warnings
 
+from home_topology.modules.automation import (
+    ActionConfig,
+    ActionType,
+    AutomationEngine,
+    AutomationEngine as ActionsEngine,
+    AutomationModule,
+    AutomationModule as ActionsModule,
+    AutomationRule,
+    AutomationRule as ActionRule,
+    ConditionConfig,
+    ConditionEvaluator,
+    ConditionType,
+    DayOfWeekCondition,
+    DelayAction,
+    EngineResult,
+    EngineResult as ActionEngineResult,
+    EventTriggerConfig,
+    ExecutionMode,
+    LocationAutomationConfig,
+    LocationAutomationConfig as LocationActionsConfig,
+    LocationOccupiedCondition,
+    LuxLevelCondition,
+    MockPlatformAdapter,
+    NumericStateCondition,
+    PlatformAdapter,
+    RuleExecution,
+    RuleExecution as ActionExecution,
+    ServiceCallAction,
+    StateCondition,
+    StateTriggerConfig,
+    TimeOfDayCondition,
+    TimeTriggerConfig,
+    TriggerConfig,
+    TriggerType,
+    fan_off_when_vacant,
+    is_dark,
+    is_nighttime,
+    media_off_when_vacant,
+    switch_off_when_vacant,
+)
+from home_topology.modules.lighting import (
+    adaptive_lighting,
+    lights_off_when_vacant,
+    lights_on_when_occupied,
+    scene_when_occupied,
+)
+
 # Show deprecation warning on import
 warnings.warn(
     "home_topology.modules.actions is deprecated. "
@@ -28,66 +75,6 @@ warnings.warn(
     "home_topology.modules.lighting for lighting presets.",
     DeprecationWarning,
     stacklevel=2,
-)
-
-# Re-export everything from automation for backwards compatibility
-from home_topology.modules.automation import (  # noqa: E402
-    # Module (with alias)
-    AutomationModule as ActionsModule,
-    AutomationModule,
-    # Engine (with alias)
-    AutomationEngine as ActionsEngine,
-    AutomationEngine,
-    EngineResult as ActionEngineResult,
-    EngineResult,
-    # Adapter
-    PlatformAdapter,
-    MockPlatformAdapter,
-    # Evaluators
-    ConditionEvaluator,
-    is_dark,
-    is_nighttime,
-    # Enums
-    TriggerType,
-    ConditionType,
-    ActionType,
-    ExecutionMode,
-    # Triggers
-    EventTriggerConfig,
-    StateTriggerConfig,
-    TimeTriggerConfig,
-    TriggerConfig,
-    # Conditions
-    TimeOfDayCondition,
-    StateCondition,
-    NumericStateCondition,
-    LuxLevelCondition,
-    LocationOccupiedCondition,
-    DayOfWeekCondition,
-    ConditionConfig,
-    # Actions
-    ServiceCallAction,
-    DelayAction,
-    ActionConfig,
-    # Rule (with aliases)
-    AutomationRule as ActionRule,
-    AutomationRule,
-    RuleExecution as ActionExecution,
-    RuleExecution,
-    LocationAutomationConfig as LocationActionsConfig,
-    LocationAutomationConfig,
-    # Generic presets
-    switch_off_when_vacant,
-    fan_off_when_vacant,
-    media_off_when_vacant,
-)
-
-# Re-export lighting presets for backwards compatibility
-from home_topology.modules.lighting import (  # noqa: E402
-    lights_on_when_occupied,
-    lights_off_when_vacant,
-    scene_when_occupied,
-    adaptive_lighting,
 )
 
 __all__ = [

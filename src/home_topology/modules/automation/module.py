@@ -5,19 +5,20 @@ Triggers automations based on location events and state changes.
 """
 
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from home_topology.modules.base import LocationModule
 from home_topology.core.bus import Event, EventBus, EventFilter
 from home_topology.core.manager import LocationManager
+from home_topology.modules.base import LocationModule
 
 from .engine import AutomationEngine
 from .models import AutomationRule, LocationAutomationConfig
 
 if TYPE_CHECKING:
-    from .adapter import PlatformAdapter
     from home_topology.modules.occupancy import OccupancyModule
+
+    from .adapter import PlatformAdapter
 
 logger = logging.getLogger(__name__)
 
