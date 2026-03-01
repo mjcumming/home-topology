@@ -78,7 +78,7 @@ pip install home-topology
 Or pin a specific version:
 
 ```bash
-pip install home-topology==1.0.0
+pip install home-topology==1.0.1
 ```
 
 Install from source (development):

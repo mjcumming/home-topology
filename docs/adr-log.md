@@ -616,8 +616,13 @@ Occupancy is **binary only**: occupied (True/False). No confidence score.
 - ✅ Simpler occupancy logic
 - ✅ Easier to understand and configure
 - ✅ Faster implementation
-- ✅ If needed later, can add as separate module feature
+- ✅ Stable, deterministic API contract for integrations
 - ⚠️ Can't express "probably occupied" - but no use case for this
+
+**Guardrail**:
+- Confidence remains out of scope for core occupancy.
+- Any future change would require a new superseding ADR with a concrete
+  automation use case and migration plan.
 
 **Implementation**:
 - Removed confidence from OccupancyState

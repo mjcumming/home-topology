@@ -28,7 +28,7 @@
 ### 4. Version Strategy 📊
 **Decision**: SemVer with pre-release `aN` suffix
 ```
-1.0.0       ← Current
+1.0.1       ← Current
 0.3.0a0     - Next pre-release
 1.0.0-rc.1  - Release candidate
 1.0.0       - Stable
@@ -127,7 +127,7 @@ Consider all-contributors bot later if community grows.
 - After years of real-world experience: confidence doesn't add value
 - No clear use case for "maybe occupied" - you either act or don't
 - Simpler implementation, easier to understand
-- If needed later, can add as optional module feature
+- Confidence is out of scope unless a future ADR supersedes this decision
 
 ### 21. No Event Coordination Between Modules 🔄
 **Decision**: Modules emit events independently and immediately, no delays  
@@ -185,4 +185,4 @@ These will be addressed when we reach that phase of development:
 ---
 
 **Status**: Core decisions complete, UI mockup phase  
-**Last Updated**: 2025-11-26
+**Last Updated**: 2026-03-01

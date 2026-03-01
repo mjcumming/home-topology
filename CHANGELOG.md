@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-03-01
+
+### Added
+
+- Topology adjacency edge primitives for cross-location handoff modeling:
+  - New `AdjacencyEdge` core model (`edge_id`, endpoints, directionality,
+    boundary metadata, crossing sources, handoff window, priority).
+  - New `LocationManager` adjacency APIs:
+    `create_adjacency_edge`, `get_adjacency_edge`, `all_adjacency_edges`,
+    `update_adjacency_edge`, `delete_adjacency_edge`, `edges_for_location`,
+    `neighboring_location_ids`.
+  - Adjacency mutation events: `adjacency.created`, `adjacency.updated`,
+    `adjacency.deleted` (when event bus is attached).
+  - Automatic adjacency cleanup when deleting a location.
+  - New tests in `tests/test_adjacency_manager.py`.
+
+### Changed
+
+- Occupancy documentation and decision records now explicitly reinforce the
+  binary occupancy policy (occupied/vacant only, no confidence model), with
+  confidence scoring kept out of scope unless superseded by a future ADR.
+
 ## [1.0.0] - 2026-02-26
 
 ### Added

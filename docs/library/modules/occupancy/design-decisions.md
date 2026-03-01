@@ -128,9 +128,9 @@ The original design included weighted confidence scoring from primary (1.0) and 
 
 ### What Replaces It?
 
-- **Timeouts provide implicit confidence**: Short timeout = less confident, long timeout = more confident
-- **HOLD events provide certainty**: Active holds indicate definite presence
-- **Integration can filter**: If an integration wants confidence, it can implement filtering before sending events
+- **Asymmetric timeout policy**: Shorter/longer timeouts tune responsiveness, not probability.
+- **Per-source contributions**: Explicit contributors provide explainable occupancy state.
+- **Deterministic events**: Integrations classify signals into TRIGGER/CLEAR/VACATE instead of numeric certainty.
 
 ---
 
@@ -138,7 +138,7 @@ The original design included weighted confidence scoring from primary (1.0) and 
 
 ### Context
 
-Secondary signals (lights, switches, power, climate) were designed to boost confidence without directly triggering occupancy.
+Secondary signals (lights, switches, power, climate) were originally modeled as confidence boosters rather than direct occupancy contributors.
 
 ### Decision
 
@@ -146,7 +146,7 @@ Secondary signals (lights, switches, power, climate) were designed to boost conf
 
 ### Rationale
 
-1. **No confidence = no need for boosters**: Without weighted confidence, secondary signals lose their purpose
+1. **No confidence = no booster tier**: Without weighted confidence, "secondary" boosters have no role
 2. **Integration decides importance**: If a light switch should trigger occupancy, the integration sends TRIGGER
 3. **If light OFF = vacant**: Integration sends VACATE
 4. **Simpler mental model**: Every signal either triggers occupancy or doesn't
@@ -154,8 +154,8 @@ Secondary signals (lights, switches, power, climate) were designed to boost conf
 ### Example: Light Switch
 
 **Old approach**:
-- Light ON → boost confidence +0.3
-- Light OFF → decrease confidence
+- Light ON → confidence boost
+- Light OFF → confidence decrease
 
 **New approach**:
 - Light ON → Integration sends TRIGGER with timeout (if configured to indicate occupancy)
@@ -295,7 +295,7 @@ UNLOCK_ALL(source_id="user_override")
 | **Signal Classification** | Core library (pattern matching) | Integration layer | Integration layer |
 | **State Tracking** | Single timer + holds | Single timer + holds set | Per-source contributions |
 | **Confidence** | Weighted 0.0-1.0 | None (binary) | None (binary) |
-| **Secondary Signals** | Lights, switches, power (boost confidence) | None (all signals equal) | None (all signals equal) |
+| **Secondary Signals** | Lights, switches, power (confidence boosters) | None (all signals equal) | None (all signals equal) |
 | **Timeouts** | Per-category dictionary | Location default + event override | Location default + event override |
 | **Propagation** | PROPAGATED event type | Internal logic | Internal logic |
 | **Configuration** | Complex (categories, weights, signals) | Minimal (two timeouts, strategy) | Minimal (two timeouts, strategy) |
@@ -629,7 +629,7 @@ A separate module for identity/person tracking:
 - Subscribes to `occupancy.changed` events
 - Maintains person entities with preferences
 - Answers "Where is Mike?"
-- Handles confidence/probability
+- Does not use confidence/probability
 - Out of scope for occupancy module
 
 ### Migration

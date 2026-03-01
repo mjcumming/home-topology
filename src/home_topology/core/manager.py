@@ -8,6 +8,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
+from home_topology.core.adjacency import AdjacencyEdge, VALID_DIRECTIONALITY
 from home_topology.core.location import Location
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class LocationManager:
         """Initialize an empty location manager."""
         self._locations: Dict[str, Location] = {}
         self._entity_to_location: Dict[str, str] = {}
+        self._adjacency_edges: Dict[str, AdjacencyEdge] = {}
         self._event_bus: Any | None = None
 
     def set_event_bus(self, event_bus: Any) -> None:
@@ -200,6 +202,187 @@ class LocationManager:
             List of all locations
         """
         return list(self._locations.values())
+
+    # Topology adjacency methods
+
+    def create_adjacency_edge(
+        self,
+        edge_id: str,
+        from_location_id: str,
+        to_location_id: str,
+        *,
+        directionality: str = "bidirectional",
+        boundary_type: str = "virtual",
+        crossing_sources: Optional[List[str]] = None,
+        handoff_window_sec: int = 12,
+        priority: int = 50,
+    ) -> AdjacencyEdge:
+        """
+        Create a topology adjacency edge between two locations.
+
+        Args:
+            edge_id: Unique identifier for the edge
+            from_location_id: Source location ID
+            to_location_id: Destination location ID
+            directionality: One of bidirectional, a_to_b, b_to_a
+            boundary_type: Type hint (door, archway, corridor, stairs, virtual)
+            crossing_sources: Optional sensor/entity IDs that observe crossings
+            handoff_window_sec: Recommended cross-zone handoff window
+            priority: Tie-break priority for ambiguous paths
+
+        Returns:
+            The created AdjacencyEdge
+
+        Raises:
+            ValueError: If edge id exists or inputs are invalid
+        """
+        if edge_id in self._adjacency_edges:
+            raise ValueError(f"Adjacency edge '{edge_id}' already exists")
+
+        self._validate_edge_locations(from_location_id, to_location_id)
+        normalized_directionality = self._normalize_directionality(directionality)
+        normalized_sources = self._normalize_crossing_sources(crossing_sources)
+        normalized_window = self._normalize_handoff_window(handoff_window_sec)
+        normalized_priority = int(priority)
+
+        edge = AdjacencyEdge(
+            edge_id=edge_id,
+            from_location_id=from_location_id,
+            to_location_id=to_location_id,
+            directionality=normalized_directionality,
+            boundary_type=str(boundary_type or "virtual"),
+            crossing_sources=normalized_sources,
+            handoff_window_sec=normalized_window,
+            priority=normalized_priority,
+        )
+        self._adjacency_edges[edge_id] = edge
+
+        self._emit_event(
+            "adjacency.created",
+            from_location_id,
+            edge.to_dict(),
+        )
+        return edge
+
+    def get_adjacency_edge(self, edge_id: str) -> Optional[AdjacencyEdge]:
+        """Get adjacency edge by id."""
+        return self._adjacency_edges.get(edge_id)
+
+    def all_adjacency_edges(self) -> List[AdjacencyEdge]:
+        """Return all adjacency edges sorted by edge id."""
+        return [self._adjacency_edges[key] for key in sorted(self._adjacency_edges.keys())]
+
+    def update_adjacency_edge(
+        self,
+        edge_id: str,
+        *,
+        from_location_id: Optional[str] = None,
+        to_location_id: Optional[str] = None,
+        directionality: Optional[str] = None,
+        boundary_type: Optional[str] = None,
+        crossing_sources: Optional[List[str]] = None,
+        handoff_window_sec: Optional[int] = None,
+        priority: Optional[int] = None,
+    ) -> AdjacencyEdge:
+        """
+        Update one adjacency edge.
+
+        Raises:
+            ValueError: If edge id not found or updates are invalid
+        """
+        edge = self.get_adjacency_edge(edge_id)
+        if edge is None:
+            raise ValueError(f"Adjacency edge '{edge_id}' does not exist")
+
+        new_from = from_location_id if from_location_id is not None else edge.from_location_id
+        new_to = to_location_id if to_location_id is not None else edge.to_location_id
+        self._validate_edge_locations(new_from, new_to)
+
+        edge.from_location_id = new_from
+        edge.to_location_id = new_to
+        if directionality is not None:
+            edge.directionality = self._normalize_directionality(directionality)
+        if boundary_type is not None:
+            edge.boundary_type = str(boundary_type or "virtual")
+        if crossing_sources is not None:
+            edge.crossing_sources = self._normalize_crossing_sources(crossing_sources)
+        if handoff_window_sec is not None:
+            edge.handoff_window_sec = self._normalize_handoff_window(handoff_window_sec)
+        if priority is not None:
+            edge.priority = int(priority)
+
+        self._emit_event(
+            "adjacency.updated",
+            edge.from_location_id,
+            edge.to_dict(),
+        )
+        return edge
+
+    def delete_adjacency_edge(self, edge_id: str) -> AdjacencyEdge:
+        """
+        Delete an adjacency edge.
+
+        Raises:
+            ValueError: If edge id not found
+        """
+        edge = self.get_adjacency_edge(edge_id)
+        if edge is None:
+            raise ValueError(f"Adjacency edge '{edge_id}' does not exist")
+
+        del self._adjacency_edges[edge_id]
+        self._emit_event(
+            "adjacency.deleted",
+            edge.from_location_id,
+            edge.to_dict(),
+        )
+        return edge
+
+    def edges_for_location(
+        self,
+        location_id: str,
+        *,
+        direction: str = "both",
+    ) -> List[AdjacencyEdge]:
+        """
+        Return edges connected to a location, optionally direction-filtered.
+
+        Direction values:
+        - both: any connected edge
+        - outbound: edges that can flow away from this location
+        - inbound: edges that can flow toward this location
+        """
+        if direction not in {"both", "outbound", "inbound"}:
+            raise ValueError("direction must be one of: both, outbound, inbound")
+        if location_id not in self._locations:
+            raise ValueError(f"Location '{location_id}' does not exist")
+
+        matched: List[AdjacencyEdge] = []
+        for edge in self.all_adjacency_edges():
+            if direction == "both":
+                if edge.from_location_id == location_id or edge.to_location_id == location_id:
+                    matched.append(edge)
+                continue
+            if direction == "outbound" and self._is_edge_outbound(edge, location_id):
+                matched.append(edge)
+                continue
+            if direction == "inbound" and self._is_edge_inbound(edge, location_id):
+                matched.append(edge)
+        return matched
+
+    def neighboring_location_ids(
+        self,
+        location_id: str,
+        *,
+        direction: str = "both",
+    ) -> List[str]:
+        """Return neighboring locations reachable from one location."""
+        neighbors: set[str] = set()
+        for edge in self.edges_for_location(location_id, direction=direction):
+            if edge.from_location_id == location_id:
+                neighbors.add(edge.to_location_id)
+            if edge.to_location_id == location_id:
+                neighbors.add(edge.from_location_id)
+        return sorted(neighbors)
 
     def parent_of(self, location_id: str) -> Optional[Location]:
         """
@@ -772,6 +955,15 @@ class LocationManager:
         if not location:
             return []
 
+        # Remove connected adjacency edges first.
+        connected_edge_ids = [
+            edge.edge_id
+            for edge in self._adjacency_edges.values()
+            if edge.from_location_id == location_id or edge.to_location_id == location_id
+        ]
+        for edge_id in connected_edge_ids:
+            self.delete_adjacency_edge(edge_id)
+
         # Remove all entity mappings
         for entity_id in location.entity_ids.copy():
             if self._entity_to_location.get(entity_id) == location_id:
@@ -826,3 +1018,59 @@ class LocationManager:
         siblings.insert(insert_at, location)
         for idx, sibling in enumerate(siblings):
             sibling.order = idx
+
+    def _validate_edge_locations(self, from_location_id: str, to_location_id: str) -> None:
+        """Validate source and target location IDs for adjacency edges."""
+        if from_location_id not in self._locations:
+            raise ValueError(f"Source location '{from_location_id}' does not exist")
+        if to_location_id not in self._locations:
+            raise ValueError(f"Destination location '{to_location_id}' does not exist")
+        if from_location_id == to_location_id:
+            raise ValueError("Adjacency edge cannot connect a location to itself")
+
+    def _normalize_directionality(self, directionality: str) -> str:
+        """Normalize and validate adjacency directionality."""
+        normalized = str(directionality or "").strip().lower()
+        if normalized not in VALID_DIRECTIONALITY:
+            allowed = ", ".join(sorted(VALID_DIRECTIONALITY))
+            raise ValueError(f"Invalid directionality '{directionality}'. Allowed: {allowed}")
+        return normalized
+
+    @staticmethod
+    def _normalize_crossing_sources(crossing_sources: Optional[List[str]]) -> List[str]:
+        """Return de-duplicated crossing source IDs preserving input order."""
+        if not crossing_sources:
+            return []
+        normalized: List[str] = []
+        for source in crossing_sources:
+            source_id = str(source).strip()
+            if not source_id or source_id in normalized:
+                continue
+            normalized.append(source_id)
+        return normalized
+
+    @staticmethod
+    def _normalize_handoff_window(handoff_window_sec: int) -> int:
+        """Validate and normalize handoff window seconds."""
+        normalized = int(handoff_window_sec)
+        if normalized < 0:
+            raise ValueError("handoff_window_sec must be >= 0")
+        return normalized
+
+    @staticmethod
+    def _is_edge_outbound(edge: AdjacencyEdge, location_id: str) -> bool:
+        """Return True when edge allows flow away from location."""
+        if edge.directionality == "bidirectional":
+            return edge.from_location_id == location_id or edge.to_location_id == location_id
+        if edge.directionality == "a_to_b":
+            return edge.from_location_id == location_id
+        return edge.to_location_id == location_id
+
+    @staticmethod
+    def _is_edge_inbound(edge: AdjacencyEdge, location_id: str) -> bool:
+        """Return True when edge allows flow toward location."""
+        if edge.directionality == "bidirectional":
+            return edge.from_location_id == location_id or edge.to_location_id == location_id
+        if edge.directionality == "a_to_b":
+            return edge.to_location_id == location_id
+        return edge.from_location_id == location_id
