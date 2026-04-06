@@ -58,6 +58,7 @@ class LocationConfig:
 
     id: str
     parent_id: str | None = None
+    occupancy_group_id: str | None = None
     occupancy_strategy: OccupancyStrategy = OccupancyStrategy.INDEPENDENT
     contributes_to_parent: bool = True
     default_timeout: int = 300  # 5 minutes for TRIGGER events

@@ -331,6 +331,7 @@ location_config = {
         "default_trailing_timeout": 120,  # 2 min for CLEAR events
         "occupancy_strategy": "independent",
         "contributes_to_parent": True,
+        "occupancy_group_id": None,
     }
 }
 
@@ -343,6 +344,16 @@ loc_manager.set_module_config("kitchen", "occupancy", location_config)
 |----------|----------|
 | `independent` | Location determines its own state |
 | `follow_parent` | Location mirrors parent's state |
+
+### Occupancy Groups
+
+Set `occupancy_group_id` on member locations when they should behave as one
+occupancy authority without restructuring the topology tree.
+
+- grouped members keep room-local source assignment
+- runtime resolves grouped events to the group authority
+- grouped members expose the same occupied/vacant result and effective timeout
+- no additional public entity is created by the core library
 
 ---
 

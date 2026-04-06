@@ -323,6 +323,7 @@ location_config = {
         "enabled": True,
         "default_timeout": 300,           # 5 min for TRIGGER events
         "default_trailing_timeout": 120,  # 2 min for CLEAR events
+        "occupancy_group_id": None,       # or "main_open_area"
         "occupancy_strategy": "independent",
         "contributes_to_parent": True,
     }
@@ -337,6 +338,19 @@ loc_manager.set_module_config("kitchen", "occupancy", location_config)
 |----------|----------|
 | `independent` | Location determines its own state |
 | `follow_parent` | Location mirrors parent's state |
+
+### Occupancy Groups
+
+`occupancy_group_id` creates a behavioral occupancy group without changing the
+topology tree.
+
+- Member locations keep their own devices, labels, automations, and detection
+  sources.
+- Occupancy-affecting events from a grouped member are resolved to the group as
+  the behavioral authority.
+- All grouped members project the same occupied/vacant result, effective
+  timeout behavior, and lock behavior.
+- The group is an occupancy runtime concept, not a new public platform entity.
 
 ---
 

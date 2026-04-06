@@ -171,10 +171,12 @@ def test_default_config_and_schema(occupancy_module: OccupancyModule) -> None:
     config = occupancy_module.default_config()
     assert config["default_timeout"] == 300
     assert config["default_trailing_timeout"] == 120
+    assert "occupancy_group_id" in config
 
     schema = occupancy_module.location_config_schema()
     assert "default_timeout" in schema["properties"]
     assert "default_trailing_timeout" in schema["properties"]
+    assert "occupancy_group_id" in schema["properties"]
 
 
 def test_lock_state_tracking(occupancy_module: OccupancyModule) -> None:

@@ -23,6 +23,8 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 _UNSET = object()
+_GROUP_AUTHORITY_PREFIX = "__occupancy_group__:"
+_GROUP_MEMBER_SOURCE_PREFIX = "__group_member__:"
 
 
 class OccupancyModule(LocationModule):
@@ -32,6 +34,9 @@ class OccupancyModule(LocationModule):
         self._bus: Optional[EventBus] = None
         self._loc_manager: Optional[LocationManager] = None
         self._engine: Optional[OccupancyEngine] = None
+        self._group_authority_by_member: dict[str, str] = {}
+        self._group_members_by_authority: dict[str, list[str]] = {}
+        self._group_id_by_authority: dict[str, str] = {}
 
     @property
     def id(self) -> str:
@@ -62,6 +67,11 @@ class OccupancyModule(LocationModule):
         """Build LocationConfig list from LocationManager."""
         configs: list[LocationConfig] = []
         assert self._loc_manager is not None
+        self._group_authority_by_member = {}
+        self._group_members_by_authority = {}
+        self._group_id_by_authority = {}
+
+        raw_entries: list[dict[str, Any]] = []
 
         for location in self._loc_manager.all_locations():
             config_dict: Optional[Dict[str, Any]] = self._loc_manager.get_module_config(
@@ -102,12 +112,79 @@ class OccupancyModule(LocationModule):
                 # Prevent parent-child feedback loops.
                 contributes = False
 
+            occupancy_group_id = self._normalize_group_id(
+                config_dict.get("occupancy_group_id") if config_dict else None
+            )
+            raw_entries.append(
+                {
+                    "id": location.id,
+                    "parent_id": location.parent_id,
+                    "occupancy_group_id": occupancy_group_id,
+                    "occupancy_strategy": strategy,
+                    "contributes_to_parent": contributes,
+                    "default_timeout": default_timeout,
+                    "default_trailing_timeout": default_trailing_timeout,
+                }
+            )
+
+        grouped_parent_ids: dict[str, set[str | None]] = {}
+        grouped_defaults: dict[str, tuple[int, int]] = {}
+        for entry in raw_entries:
+            occupancy_group_id = entry["occupancy_group_id"]
+            if occupancy_group_id is None:
+                continue
+            authority_id = self._group_authority_location_id(occupancy_group_id)
+            self._group_authority_by_member[entry["id"]] = authority_id
+            self._group_members_by_authority.setdefault(authority_id, []).append(entry["id"])
+            self._group_id_by_authority[authority_id] = occupancy_group_id
+            grouped_parent_ids.setdefault(authority_id, set()).add(entry["parent_id"])
+            grouped_defaults.setdefault(
+                authority_id,
+                (
+                    int(entry["default_timeout"]),
+                    int(entry["default_trailing_timeout"]),
+                ),
+            )
+
+        for entry in raw_entries:
+            authority_id = self._group_authority_by_member.get(entry["id"])
+            if authority_id is not None:
+                configs.append(
+                    LocationConfig(
+                        id=entry["id"],
+                        parent_id=authority_id,
+                        occupancy_group_id=self._group_id_by_authority.get(authority_id),
+                        occupancy_strategy=OccupancyStrategy.FOLLOW_PARENT,
+                        contributes_to_parent=False,
+                        default_timeout=int(entry["default_timeout"]),
+                        default_trailing_timeout=int(entry["default_trailing_timeout"]),
+                    )
+                )
+                continue
+
             configs.append(
                 LocationConfig(
-                    id=location.id,
-                    parent_id=location.parent_id,
-                    occupancy_strategy=strategy,
-                    contributes_to_parent=contributes,
+                    id=entry["id"],
+                    parent_id=entry["parent_id"],
+                    occupancy_group_id=None,
+                    occupancy_strategy=entry["occupancy_strategy"],
+                    contributes_to_parent=entry["contributes_to_parent"],
+                    default_timeout=int(entry["default_timeout"]),
+                    default_trailing_timeout=int(entry["default_trailing_timeout"]),
+                )
+            )
+
+        for authority_id, member_ids in sorted(self._group_members_by_authority.items()):
+            parent_ids = grouped_parent_ids.get(authority_id, set())
+            authority_parent_id = next(iter(parent_ids)) if len(parent_ids) == 1 else None
+            default_timeout, default_trailing_timeout = grouped_defaults.get(authority_id, (300, 120))
+            configs.append(
+                LocationConfig(
+                    id=authority_id,
+                    parent_id=authority_parent_id,
+                    occupancy_group_id=self._group_id_by_authority.get(authority_id),
+                    occupancy_strategy=OccupancyStrategy.INDEPENDENT,
+                    contributes_to_parent=True,
                     default_timeout=default_timeout,
                     default_trailing_timeout=default_trailing_timeout,
                 )
@@ -184,10 +261,21 @@ class OccupancyModule(LocationModule):
             logger.warning("Ignoring occupancy.signal for unknown location: %s", location_id)
             return None
 
+        resolved_location_id, resolved_source_id, timeout, timeout_set, lock_scope = (
+            self._resolve_group_event(
+                location_id,
+                str(source_id),
+                event_type=event_type,
+                timeout=timeout,
+                timeout_set=timeout_set,
+                lock_scope=lock_scope,
+            )
+        )
+
         return OccupancyEvent(
-            location_id=location_id,
+            location_id=resolved_location_id,
             event_type=event_type,
-            source_id=source_id,
+            source_id=resolved_source_id,
             timestamp=self._normalize_timestamp(event.timestamp),
             timeout=timeout,
             timeout_set=timeout_set,
@@ -251,54 +339,46 @@ class OccupancyModule(LocationModule):
     def _emit_occupancy_changed(self, transition: Any) -> None:
         """Emit semantic occupancy.changed event."""
         assert self._bus is not None
-        new_state = transition.new_state
-        prev_state = transition.previous_state
+        location_id = transition.location_id
+        if self._is_group_authority_location(location_id):
+            for member_id in self._group_members_by_authority.get(location_id, []):
+                payload = self._serialize_public_state(
+                    member_id,
+                    state_override=transition.new_state,
+                )
+                payload["previous_occupied"] = (
+                    transition.previous_state.is_occupied if transition.previous_state else False
+                )
+                payload["reason"] = transition.reason
+                self._bus.publish(
+                    Event(
+                        type="occupancy.changed",
+                        source="occupancy",
+                        location_id=member_id,
+                        payload=payload,
+                        timestamp=datetime.now(UTC),
+                    )
+                )
+            return
+
+        if location_id in self._group_authority_by_member:
+            return
+
+        payload = self._serialize_public_state(
+            location_id,
+            state_override=transition.new_state,
+        )
+        payload["previous_occupied"] = (
+            transition.previous_state.is_occupied if transition.previous_state else False
+        )
+        payload["reason"] = transition.reason
 
         self._bus.publish(
             Event(
                 type="occupancy.changed",
                 source="occupancy",
-                location_id=transition.location_id,
-                payload={
-                    "occupied": new_state.is_occupied,
-                    "locked_by": list(new_state.locked_by),
-                    "is_locked": new_state.is_locked,
-                    "lock_modes": [
-                        mode.value for mode in sorted(new_state.lock_modes, key=lambda m: m.value)
-                    ],
-                    "direct_locks": [
-                        {
-                            "source_id": lock.source_id,
-                            "mode": lock.mode.value,
-                            "scope": lock.scope.value,
-                        }
-                        for lock in sorted(
-                            new_state.direct_locks,
-                            key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
-                        )
-                    ],
-                    "contributions": [
-                        {
-                            "source_id": contribution.source_id,
-                            "expires_at": (
-                                contribution.expires_at.isoformat()
-                                if contribution.expires_at
-                                else None
-                            ),
-                        }
-                        for contribution in sorted(
-                            new_state.contributions,
-                            key=lambda c: c.source_id,
-                        )
-                    ],
-                    "previous_occupied": prev_state.is_occupied if prev_state else False,
-                    # Stable reason format:
-                    # - event:<event_type>
-                    # - propagation:child:<location_id>
-                    # - propagation:parent
-                    # - timeout
-                    "reason": transition.reason,
-                },
+                location_id=location_id,
+                payload=payload,
                 timestamp=datetime.now(UTC),
             )
         )
@@ -329,50 +409,15 @@ class OccupancyModule(LocationModule):
 
     def get_location_state(self, location_id: str) -> Optional[Dict[str, Any]]:
         """Get current occupancy state for a location."""
-        if not self._engine or location_id not in self._engine.state:
+        if not self._engine:
+            return None
+        authority_id = self._group_authority_by_member.get(location_id)
+        runtime_location_id = authority_id or location_id
+        if runtime_location_id not in self._engine.state:
             return None
 
-        state = self._engine.state[location_id]
-        return {
-            "occupied": state.is_occupied,
-            "locked_by": list(state.locked_by),
-            "is_locked": state.is_locked,
-            "lock_modes": [mode.value for mode in sorted(state.lock_modes, key=lambda m: m.value)],
-            "direct_locks": [
-                {
-                    "source_id": lock.source_id,
-                    "mode": lock.mode.value,
-                    "scope": lock.scope.value,
-                }
-                for lock in sorted(
-                    state.direct_locks,
-                    key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
-                )
-            ],
-            "contributions": [
-                {
-                    "source_id": contribution.source_id,
-                    "expires_at": (
-                        contribution.expires_at.isoformat() if contribution.expires_at else None
-                    ),
-                }
-                for contribution in sorted(state.contributions, key=lambda c: c.source_id)
-            ],
-            "suspended_contributions": [
-                {
-                    "source_id": contribution.source_id,
-                    "remaining": (
-                        contribution.remaining.total_seconds()
-                        if contribution.remaining is not None
-                        else None
-                    ),
-                }
-                for contribution in sorted(
-                    state.suspended_contributions,
-                    key=lambda c: c.source_id,
-                )
-            ],
-        }
+        state = self._engine.state[runtime_location_id]
+        return self._serialize_public_state(location_id, state_override=state)
 
     def dump_state(self) -> Dict[str, Any]:
         """Export engine state for persistence."""
@@ -395,6 +440,7 @@ class OccupancyModule(LocationModule):
             "enabled": True,
             "default_timeout": 300,
             "default_trailing_timeout": 120,
+            "occupancy_group_id": None,
             "occupancy_strategy": "independent",
             "contributes_to_parent": True,
         }
@@ -428,6 +474,11 @@ class OccupancyModule(LocationModule):
                     "title": "Occupancy strategy",
                     "enum": ["independent", "follow_parent"],
                     "default": "independent",
+                },
+                "occupancy_group_id": {
+                    "type": ["string", "null"],
+                    "title": "Occupancy group ID",
+                    "default": None,
                 },
                 "contributes_to_parent": {
                     "type": "boolean",
@@ -469,6 +520,7 @@ class OccupancyModule(LocationModule):
             timeout=timeout_value,
             timeout_set=timeout_set,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -503,6 +555,7 @@ class OccupancyModule(LocationModule):
             timeout=timeout_value,
             timeout_set=timeout_set,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -523,6 +576,7 @@ class OccupancyModule(LocationModule):
             source_id="command",
             timestamp=now,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -553,6 +607,7 @@ class OccupancyModule(LocationModule):
             lock_mode=parsed_mode,
             lock_scope=parsed_scope,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -571,6 +626,7 @@ class OccupancyModule(LocationModule):
             source_id=source_id,
             timestamp=now,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -589,6 +645,7 @@ class OccupancyModule(LocationModule):
             source_id="force_unlock",
             timestamp=now,
         )
+        event = self._rewrite_public_event(event)
         result = self._engine.handle_event(event, now)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
@@ -605,7 +662,8 @@ class OccupancyModule(LocationModule):
             now = datetime.now(UTC)
         else:
             now = self._normalize_timestamp(now)
-        return self._engine.get_effective_timeout(location_id, now)
+        runtime_location_id = self._group_authority_by_member.get(location_id, location_id)
+        return self._engine.get_effective_timeout(runtime_location_id, now)
 
     def vacate_area(
         self,
@@ -623,19 +681,42 @@ class OccupancyModule(LocationModule):
         else:
             now = self._normalize_timestamp(now)
 
-        result = self._engine.vacate_area(location_id, source_id, now, include_locked)
+        runtime_location_id = self._group_authority_by_member.get(location_id, location_id)
+        result = self._engine.vacate_area(runtime_location_id, source_id, now, include_locked)
         for transition in result.transitions:
             self._emit_occupancy_changed(transition)
 
-        return [
-            {
-                "location_id": t.location_id,
-                "was_occupied": t.previous_state.is_occupied,
-                "is_occupied": t.new_state.is_occupied,
-                "reason": t.reason,
-            }
-            for t in result.transitions
-        ]
+        public_transitions: list[Dict[str, Any]] = []
+        seen_locations: set[str] = set()
+        for transition in result.transitions:
+            if self._is_group_authority_location(transition.location_id):
+                for member_id in self._group_members_by_authority.get(transition.location_id, []):
+                    if member_id in seen_locations:
+                        continue
+                    seen_locations.add(member_id)
+                    public_transitions.append(
+                        {
+                            "location_id": member_id,
+                            "was_occupied": transition.previous_state.is_occupied,
+                            "is_occupied": transition.new_state.is_occupied,
+                            "reason": transition.reason,
+                        }
+                    )
+                continue
+            if transition.location_id in self._group_authority_by_member:
+                continue
+            if transition.location_id in seen_locations:
+                continue
+            seen_locations.add(transition.location_id)
+            public_transitions.append(
+                {
+                    "location_id": transition.location_id,
+                    "was_occupied": transition.previous_state.is_occupied,
+                    "is_occupied": transition.new_state.is_occupied,
+                    "reason": transition.reason,
+                }
+            )
+        return public_transitions
 
     def on_location_config_changed(self, location_id: str, config: Dict) -> None:
         """Rebuild engine when location config changes."""
@@ -673,3 +754,195 @@ class OccupancyModule(LocationModule):
             raise ValueError(f"{field_name} must be an integer number of seconds")
         if value < 0:
             raise ValueError(f"{field_name} must be >= 0")
+
+    @staticmethod
+    def _normalize_group_id(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @staticmethod
+    def _group_authority_location_id(group_id: str) -> str:
+        return f"{_GROUP_AUTHORITY_PREFIX}{group_id}"
+
+    def _is_group_authority_location(self, location_id: str) -> bool:
+        return location_id.startswith(_GROUP_AUTHORITY_PREFIX)
+
+    @staticmethod
+    def _group_member_source_id(origin_location_id: str, source_id: str) -> str:
+        return f"{_GROUP_MEMBER_SOURCE_PREFIX}{origin_location_id}::{source_id}"
+
+    @staticmethod
+    def _parse_group_member_source_id(source_id: str) -> tuple[str, str] | None:
+        if not source_id.startswith(_GROUP_MEMBER_SOURCE_PREFIX):
+            return None
+        remainder = source_id[len(_GROUP_MEMBER_SOURCE_PREFIX) :]
+        origin_location_id, separator, origin_source_id = remainder.partition("::")
+        if not separator or not origin_location_id or not origin_source_id:
+            return None
+        return origin_location_id, origin_source_id
+
+    def _config_for_location(self, location_id: str) -> Dict[str, Any]:
+        if self._loc_manager is None:
+            return {}
+        config = self._loc_manager.get_module_config(location_id, self.id)
+        return config if isinstance(config, dict) else {}
+
+    def _resolve_group_event(
+        self,
+        location_id: str,
+        source_id: str,
+        *,
+        event_type: EventType,
+        timeout: int | None,
+        timeout_set: bool,
+        lock_scope: LockScope,
+    ) -> tuple[str, str, int | None, bool, LockScope]:
+        authority_id = self._group_authority_by_member.get(location_id)
+        if authority_id is None:
+            return location_id, source_id, timeout, timeout_set, lock_scope
+
+        resolved_timeout = timeout
+        resolved_timeout_set = timeout_set
+        if not timeout_set and event_type == EventType.TRIGGER:
+            resolved_timeout = int(self._config_for_location(location_id).get("default_timeout", 300))
+            resolved_timeout_set = True
+        elif not timeout_set and event_type == EventType.CLEAR:
+            resolved_timeout = int(
+                self._config_for_location(location_id).get("default_trailing_timeout", 120)
+            )
+            resolved_timeout_set = True
+
+        resolved_scope = lock_scope
+        if event_type == EventType.LOCK:
+            resolved_scope = LockScope.SUBTREE
+
+        return (
+            authority_id,
+            self._group_member_source_id(location_id, source_id),
+            resolved_timeout,
+            resolved_timeout_set,
+            resolved_scope,
+        )
+
+    def _rewrite_public_event(self, event: OccupancyEvent) -> OccupancyEvent:
+        (
+            resolved_location_id,
+            resolved_source_id,
+            resolved_timeout,
+            resolved_timeout_set,
+            resolved_lock_scope,
+        ) = self._resolve_group_event(
+            event.location_id,
+            event.source_id,
+            event_type=event.event_type,
+            timeout=event.timeout,
+            timeout_set=event.timeout_set,
+            lock_scope=event.lock_scope,
+        )
+        return OccupancyEvent(
+            location_id=resolved_location_id,
+            event_type=event.event_type,
+            source_id=resolved_source_id,
+            timestamp=event.timestamp,
+            timeout=resolved_timeout,
+            timeout_set=resolved_timeout_set,
+            lock_mode=event.lock_mode,
+            lock_scope=resolved_lock_scope,
+        )
+
+    def _serialize_public_state(
+        self,
+        location_id: str,
+        *,
+        state_override: Any,
+    ) -> Dict[str, Any]:
+        authority_id = self._group_authority_by_member.get(location_id)
+        occupancy_group_id: str | None = None
+        if authority_id is not None:
+            occupancy_group_id = self._group_id_by_authority.get(authority_id)
+
+        return {
+            "occupied": state_override.is_occupied,
+            "locked_by": list(state_override.locked_by),
+            "is_locked": state_override.is_locked,
+            "lock_modes": [
+                mode.value for mode in sorted(state_override.lock_modes, key=lambda m: m.value)
+            ],
+            "direct_locks": [
+                self._serialize_lock(lock, occupancy_group_id)
+                for lock in sorted(
+                    state_override.direct_locks,
+                    key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
+                )
+            ],
+            "contributions": [
+                self._serialize_contribution(contribution, occupancy_group_id)
+                for contribution in sorted(state_override.contributions, key=lambda c: c.source_id)
+            ],
+            "suspended_contributions": [
+                self._serialize_suspended_contribution(contribution, occupancy_group_id)
+                for contribution in sorted(
+                    state_override.suspended_contributions,
+                    key=lambda c: c.source_id,
+                )
+            ],
+            "occupancy_group_id": occupancy_group_id,
+        }
+
+    def _serialize_contribution(
+        self,
+        contribution: Any,
+        occupancy_group_id: str | None,
+    ) -> Dict[str, Any]:
+        item: Dict[str, Any] = {
+            "source_id": contribution.source_id,
+            "expires_at": contribution.expires_at.isoformat() if contribution.expires_at else None,
+        }
+        parsed = self._parse_group_member_source_id(contribution.source_id)
+        if parsed is not None:
+            origin_location_id, origin_source_id = parsed
+            item["origin_location_id"] = origin_location_id
+            item["origin_source_id"] = origin_source_id
+            item["via_occupancy_group"] = occupancy_group_id
+        return item
+
+    def _serialize_suspended_contribution(
+        self,
+        contribution: Any,
+        occupancy_group_id: str | None,
+    ) -> Dict[str, Any]:
+        item: Dict[str, Any] = {
+            "source_id": contribution.source_id,
+            "remaining": (
+                contribution.remaining.total_seconds()
+                if contribution.remaining is not None
+                else None
+            ),
+        }
+        parsed = self._parse_group_member_source_id(contribution.source_id)
+        if parsed is not None:
+            origin_location_id, origin_source_id = parsed
+            item["origin_location_id"] = origin_location_id
+            item["origin_source_id"] = origin_source_id
+            item["via_occupancy_group"] = occupancy_group_id
+        return item
+
+    def _serialize_lock(
+        self,
+        lock: Any,
+        occupancy_group_id: str | None,
+    ) -> Dict[str, Any]:
+        item: Dict[str, Any] = {
+            "source_id": lock.source_id,
+            "mode": lock.mode.value,
+            "scope": lock.scope.value,
+        }
+        parsed = self._parse_group_member_source_id(lock.source_id)
+        if parsed is not None:
+            origin_location_id, origin_source_id = parsed
+            item["origin_location_id"] = origin_location_id
+            item["origin_source_id"] = origin_source_id
+            item["via_occupancy_group"] = occupancy_group_id
+        return item

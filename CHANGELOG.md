@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-06
+
+### Added
+
+- First-class occupancy-group runtime support in the core occupancy module:
+  - New `occupancy_group_id` config on occupancy locations.
+  - Grouped locations now resolve occupancy-affecting events to one shared
+    occupancy authority while preserving origin room/source metadata.
+  - Group members project the same occupied/vacant state, effective timeout,
+    and lock behavior without creating a new public entity.
+  - Public occupancy payloads now expose group-aware explainability metadata
+    such as originating room/source and `via_occupancy_group`.
+
+### Changed
+
+- Occupancy grouping is now modeled as module-level behavioral state in the
+  core library rather than integration-side mirrored peer state.
+- Occupancy docs and ADRs now explicitly define occupancy groups as behavioral
+  runtime objects, not topology restructuring.
+
 ## [1.0.1] - 2026-03-01
 
 ### Added

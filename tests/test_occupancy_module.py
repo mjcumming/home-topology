@@ -14,9 +14,10 @@ def location_manager() -> LocationManager:
     mgr.create_location(id="house", name="House")
     mgr.create_location(id="main_floor", name="Main Floor", parent_id="house")
     mgr.create_location(id="kitchen", name="Kitchen", parent_id="main_floor")
+    mgr.create_location(id="dining_room", name="Dining Room", parent_id="main_floor")
     mgr.create_location(id="reading_nook", name="Reading Nook", parent_id="main_floor")
 
-    for loc_id in ["house", "main_floor", "kitchen"]:
+    for loc_id in ["house", "main_floor", "kitchen", "dining_room"]:
         mgr.set_module_config(
             location_id=loc_id,
             module_id="occupancy",
@@ -166,6 +167,129 @@ def test_lock_mode_scope_subtree_blocks_child_trigger(occupancy_module: Occupanc
     assert kitchen["occupied"] is False
     assert house["occupied"] is False
     assert "away_mode" in kitchen["locked_by"]
+
+
+def test_grouped_members_share_state_and_timeout(
+    occupancy_module: OccupancyModule,
+    location_manager: LocationManager,
+) -> None:
+    kitchen_config = dict(location_manager.get_module_config("kitchen", "occupancy"))
+    kitchen_config["occupancy_group_id"] = "main_open_area"
+    dining_config = dict(location_manager.get_module_config("dining_room", "occupancy"))
+    dining_config["occupancy_group_id"] = "main_open_area"
+    location_manager.set_module_config("kitchen", "occupancy", kitchen_config)
+    location_manager.set_module_config("dining_room", "occupancy", dining_config)
+    occupancy_module.on_location_config_changed("kitchen", kitchen_config)
+
+    t0 = datetime(2025, 1, 1, tzinfo=UTC)
+    occupancy_module.trigger("kitchen", "motion", timeout=60, now=t0)
+
+    kitchen = occupancy_module.get_location_state("kitchen")
+    dining = occupancy_module.get_location_state("dining_room")
+    assert kitchen is not None and dining is not None
+    assert kitchen["occupied"] is True
+    assert dining["occupied"] is True
+    assert kitchen["occupancy_group_id"] == "main_open_area"
+    assert dining["occupancy_group_id"] == "main_open_area"
+    assert occupancy_module.get_effective_timeout("kitchen", t0) == occupancy_module.get_effective_timeout(
+        "dining_room", t0
+    )
+    assert any(
+        contribution.get("origin_location_id") == "kitchen"
+        and contribution.get("origin_source_id") == "motion"
+        and contribution.get("via_occupancy_group") == "main_open_area"
+        for contribution in dining["contributions"]
+    )
+
+    occupancy_module.check_timeouts(t0 + timedelta(seconds=61))
+    kitchen_after = occupancy_module.get_location_state("kitchen")
+    dining_after = occupancy_module.get_location_state("dining_room")
+    assert kitchen_after is not None and dining_after is not None
+    assert kitchen_after["occupied"] is False
+    assert dining_after["occupied"] is False
+
+
+def test_grouped_member_trigger_without_explicit_timeout_uses_origin_defaults(
+    occupancy_module: OccupancyModule,
+    location_manager: LocationManager,
+) -> None:
+    kitchen_config = dict(location_manager.get_module_config("kitchen", "occupancy"))
+    kitchen_config["occupancy_group_id"] = "main_open_area"
+    kitchen_config["default_timeout"] = 180
+    dining_config = dict(location_manager.get_module_config("dining_room", "occupancy"))
+    dining_config["occupancy_group_id"] = "main_open_area"
+    dining_config["default_timeout"] = 30
+    location_manager.set_module_config("kitchen", "occupancy", kitchen_config)
+    location_manager.set_module_config("dining_room", "occupancy", dining_config)
+    occupancy_module.on_location_config_changed("kitchen", kitchen_config)
+
+    t0 = datetime(2025, 1, 1, tzinfo=UTC)
+    occupancy_module.trigger("kitchen", "motion", now=t0)
+
+    expected = t0 + timedelta(seconds=180)
+    assert occupancy_module.get_effective_timeout("kitchen", t0) == expected
+    assert occupancy_module.get_effective_timeout("dining_room", t0) == expected
+
+
+def test_group_lock_behavior_is_shared_by_all_members(
+    occupancy_module: OccupancyModule,
+    location_manager: LocationManager,
+) -> None:
+    kitchen_config = dict(location_manager.get_module_config("kitchen", "occupancy"))
+    kitchen_config["occupancy_group_id"] = "main_open_area"
+    dining_config = dict(location_manager.get_module_config("dining_room", "occupancy"))
+    dining_config["occupancy_group_id"] = "main_open_area"
+    location_manager.set_module_config("kitchen", "occupancy", kitchen_config)
+    location_manager.set_module_config("dining_room", "occupancy", dining_config)
+    occupancy_module.on_location_config_changed("kitchen", kitchen_config)
+
+    t0 = datetime(2025, 1, 1, tzinfo=UTC)
+    occupancy_module.lock("kitchen", "sleep_mode", now=t0)
+
+    kitchen = occupancy_module.get_location_state("kitchen")
+    dining = occupancy_module.get_location_state("dining_room")
+    assert kitchen is not None and dining is not None
+    assert kitchen["is_locked"] is True
+    assert dining["is_locked"] is True
+    assert kitchen["lock_modes"] == dining["lock_modes"]
+    assert any(lock.get("origin_location_id") == "kitchen" for lock in dining["direct_locks"])
+
+    occupancy_module.unlock("kitchen", "sleep_mode", now=t0 + timedelta(seconds=1))
+    kitchen_after = occupancy_module.get_location_state("kitchen")
+    dining_after = occupancy_module.get_location_state("dining_room")
+    assert kitchen_after is not None and dining_after is not None
+    assert kitchen_after["is_locked"] is False
+    assert dining_after["is_locked"] is False
+
+
+def test_group_events_emit_for_members_not_synthetic_authority(
+    event_bus: EventBus,
+    occupancy_module: OccupancyModule,
+    location_manager: LocationManager,
+) -> None:
+    kitchen_config = dict(location_manager.get_module_config("kitchen", "occupancy"))
+    kitchen_config["occupancy_group_id"] = "main_open_area"
+    dining_config = dict(location_manager.get_module_config("dining_room", "occupancy"))
+    dining_config["occupancy_group_id"] = "main_open_area"
+    location_manager.set_module_config("kitchen", "occupancy", kitchen_config)
+    location_manager.set_module_config("dining_room", "occupancy", dining_config)
+    occupancy_module.on_location_config_changed("kitchen", kitchen_config)
+
+    emitted: list[Event] = []
+
+    def capture(event: Event) -> None:
+        if event.type == "occupancy.changed":
+            emitted.append(event)
+
+    event_bus.subscribe(capture)
+
+    now = datetime.now(UTC)
+    occupancy_module.trigger("kitchen", "motion", timeout=60, now=now)
+
+    location_ids = {event.location_id for event in emitted}
+    assert "kitchen" in location_ids
+    assert "dining_room" in location_ids
+    assert "__occupancy_group__:main_open_area" not in location_ids
 
 
 def test_occupancy_changed_payload_contains_contributions(

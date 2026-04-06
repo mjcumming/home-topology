@@ -963,6 +963,69 @@ Behavior rules:
 
 ---
 
+### ADR-029: Occupancy Groups Are First-Class Occupancy Runtime Objects, Not Topology Restructuring (2026-04-06)
+
+**Status**: ✅ APPROVED
+
+**Context**:
+- Some integrations need a stronger occupancy relationship than normal
+  parent/child aggregation.
+- The use case is not "show a parent aggregate as occupied when any child is
+  occupied"; the use case is "these member locations must all expose the same
+  occupancy state, the same effective timeout, and the same lock behavior."
+- Existing occupancy hierarchy semantics do not provide that:
+  - parent locations aggregate from children
+  - sibling locations remain independent
+  - `follow_parent` mirrors parent state to a child, but does not define a
+    symmetric behavioral group of siblings
+- Implementing this only in an adapter would duplicate occupancy semantics
+  outside the occupancy engine and risk drift across integrations.
+
+**Decision**:
+- Add a first-class occupancy-group primitive to the occupancy runtime.
+- An occupancy group is a module-level behavioral object, not a topology node.
+- Group membership is explicit on member locations, not inferred from mirrored
+  peer arrays.
+- The occupancy runtime owns one canonical state per group:
+  - occupied/vacant outcome
+  - effective timeout / vacancy timing
+  - lock behavior / occupancy intent
+- Occupancy-affecting events originating from a grouped location are resolved
+  to the group as the behavioral authority while preserving origin metadata.
+- Member locations project the group's occupancy result as their public
+  occupancy state.
+- This feature is module-specific and does not change the kernel's general rule
+  that hierarchy is the primary structural grouping mechanism.
+- Occupancy groups are intentionally local behavioral groups, not arbitrary
+  whole-home or cross-floor aggregate objects.
+
+**Consequences**:
+- ✅ Occupancy groups become part of the core occupancy model instead of an
+  integration-only workaround.
+- ✅ Integrations can expose grouped room occupancy without duplicating timeout
+  and lock logic outside the engine.
+- ✅ The core library can test and guarantee "members always share one state"
+  semantics directly.
+- ✅ Topology remains structural; occupancy grouping remains behavioral.
+- ⚠️ Occupancy module APIs, config models, restore behavior, and explainability
+  payloads will need to evolve to represent group authority and member
+  projection.
+- ⚠️ Existing integrations that approximate grouping with adapter-specific state
+  mirroring will need migration work.
+
+**Alternatives Considered**:
+- Use topology restructuring only (create a parent and reparent grouped rooms):
+  rejected because parent aggregation does not force siblings to share the same
+  occupancy state, timeout, and lock behavior.
+- Keep occupancy grouping entirely in the integration adapter:
+  rejected because it duplicates occupancy semantics outside the occupancy
+  engine and invites drift.
+- Introduce a new general kernel location type for groups:
+  rejected because this is occupancy-module behavior, not a kernel-wide
+  topology type.
+
+---
+
 ## Rejected Decisions
 
 ### REJECTED: Adapter Layer for Occupancy
