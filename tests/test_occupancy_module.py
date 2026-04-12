@@ -191,9 +191,9 @@ def test_grouped_members_share_state_and_timeout(
     assert dining["occupied"] is True
     assert kitchen["occupancy_group_id"] == "main_open_area"
     assert dining["occupancy_group_id"] == "main_open_area"
-    assert occupancy_module.get_effective_timeout("kitchen", t0) == occupancy_module.get_effective_timeout(
-        "dining_room", t0
-    )
+    assert occupancy_module.get_effective_timeout(
+        "kitchen", t0
+    ) == occupancy_module.get_effective_timeout("dining_room", t0)
     assert any(
         contribution.get("origin_location_id") == "kitchen"
         and contribution.get("origin_source_id") == "motion"
@@ -328,6 +328,64 @@ def test_public_api_rejects_non_integer_timeout(occupancy_module: OccupancyModul
 
     with pytest.raises(ValueError):
         occupancy_module.clear("kitchen", "motion", trailing_timeout=1.5)  # type: ignore[arg-type]
+
+
+def test_exit_grace_cancelled_when_another_source_triggers(
+    occupancy_module: OccupancyModule,
+) -> None:
+    """CLEAR trailing marks exit grace; a later TRIGGER cancels all exit-grace holds."""
+    t0 = datetime(2026, 4, 11, 10, 0, tzinfo=UTC)
+    occupancy_module.trigger("kitchen", "motion", timeout=1800, now=t0)
+    occupancy_module.trigger("kitchen", "presence", timeout=None, now=t0 + timedelta(seconds=30))
+    occupancy_module.clear(
+        "kitchen", "presence", trailing_timeout=300, now=t0 + timedelta(seconds=60)
+    )
+
+    mid = occupancy_module.get_location_state("kitchen")
+    assert mid is not None
+    assert mid["occupied"] is True
+    assert {c["source_id"] for c in mid["contributions"]} == {"motion", "presence"}
+    presence_row = next(c for c in mid["contributions"] if c["source_id"] == "presence")
+    assert presence_row.get("exit_grace") is True
+
+    occupancy_module.trigger("kitchen", "motion", timeout=1800, now=t0 + timedelta(seconds=120))
+
+    after = occupancy_module.get_location_state("kitchen")
+    assert after is not None
+    assert after["occupied"] is True
+    assert {c["source_id"] for c in after["contributions"]} == {"motion"}
+
+
+def test_authoritative_vacant_signal_vacates_whole_room(
+    occupancy_module: OccupancyModule, event_bus: EventBus
+) -> None:
+    """HA integration path: authoritative_vacant + CLEAR timeout 0 => VACATE entire location."""
+    t0 = datetime(2026, 4, 11, 11, 0, tzinfo=UTC)
+    occupancy_module.trigger("kitchen", "motion", timeout=600, now=t0)
+    occupancy_module.trigger("kitchen", "light", timeout=900, now=t0)
+
+    assert occupancy_module.get_location_state("kitchen")["occupied"] is True
+
+    event_bus.publish(
+        Event(
+            type="occupancy.signal",
+            source="ha",
+            entity_id="light.kitchen_ceiling",
+            location_id="kitchen",
+            payload={
+                "event_type": "clear",
+                "source_id": "light",
+                "timeout": 0,
+                "authoritative_vacant": True,
+            },
+            timestamp=t0 + timedelta(seconds=10),
+        )
+    )
+
+    st = occupancy_module.get_location_state("kitchen")
+    assert st is not None
+    assert st["occupied"] is False
+    assert st["contributions"] == []
 
 
 def test_naive_datetime_is_normalized(occupancy_module: OccupancyModule) -> None:

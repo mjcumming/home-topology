@@ -162,11 +162,11 @@ class OccupancyEngine:
 
         prev_freeze = LockMode.FREEZE in current_state.lock_modes
         next_freeze = LockMode.FREEZE in next_lock_modes
-        contrib_map = self._contrib_map(current_state.contributions)
+        contrib_map, exit_grace_sources = self._split_contributions(current_state.contributions)
         suspended_map = self._suspended_map(current_state.suspended_contributions)
 
         # Remove expired timed contributions.
-        self._drop_expired(contrib_map, now)
+        self._drop_expired_contribs(contrib_map, exit_grace_sources, now)
 
         if not prev_freeze and next_freeze:
             suspended_map = {
@@ -176,6 +176,7 @@ class OccupancyEngine:
                 for source_id, expires_at in contrib_map.items()
             }
             contrib_map = {}
+            exit_grace_sources.clear()
         elif prev_freeze and not next_freeze:
             contrib_map = self._resume_contributions(suspended_map, now)
             suspended_map = {}
@@ -197,6 +198,7 @@ class OccupancyEngine:
 
         if event and event.event_type == EventType.VACATE:
             contrib_map.clear()
+            exit_grace_sources.clear()
             suspended_map.clear()
 
         elif event and event.event_type == EventType.TRIGGER:
@@ -204,11 +206,17 @@ class OccupancyEngine:
                 # FOLLOW_PARENT is strict: direct occupancy events are ignored.
                 pass
             else:
+                # New occupancy evidence cancels any scheduled vacancy (exit-grace holds).
+                for sid in list(exit_grace_sources):
+                    contrib_map.pop(sid, None)
+                exit_grace_sources.clear()
+
                 timeout_value = self._get_trigger_timeout(event, config)
                 expires_at = (
                     None if timeout_value is None else now + timedelta(seconds=timeout_value)
                 )
                 contrib_map[event.source_id] = expires_at
+                exit_grace_sources.discard(event.source_id)
 
         elif event and event.event_type == EventType.CLEAR:
             if config.occupancy_strategy == OccupancyStrategy.FOLLOW_PARENT:
@@ -218,8 +226,10 @@ class OccupancyEngine:
                 trailing_timeout = self._get_clear_timeout(event, config)
                 if trailing_timeout > 0:
                     contrib_map[event.source_id] = now + timedelta(seconds=trailing_timeout)
+                    exit_grace_sources.add(event.source_id)
                 else:
                     del contrib_map[event.source_id]
+                    exit_grace_sources.discard(event.source_id)
 
         # Maintain parent synthetic contribution for a child that changed.
         if propagated_from_child and config.occupancy_strategy != OccupancyStrategy.FOLLOW_PARENT:
@@ -231,8 +241,10 @@ class OccupancyEngine:
                     contrib_map[child_source] = self.get_effective_timeout(
                         propagated_from_child, now
                     )
+                    exit_grace_sources.discard(child_source)
                 else:
                     contrib_map.pop(child_source, None)
+                    exit_grace_sources.discard(child_source)
 
         # Enforce strict FOLLOW_PARENT behavior.
         if config.occupancy_strategy == OccupancyStrategy.FOLLOW_PARENT:
@@ -242,15 +254,18 @@ class OccupancyEngine:
                 for source_id, expires_at in contrib_map.items()
                 if source_id == follow_source
             }
+            exit_grace_sources.intersection_update(contrib_map.keys())
             parent_state = self.state.get(config.parent_id) if config.parent_id else None
             if parent_state and parent_state.is_occupied and follow_source:
                 # FOLLOW_PARENT mirrors occupancy state only; it does not create independent timers.
                 contrib_map[follow_source] = None
             else:
                 contrib_map.pop(follow_source, None)
+            exit_grace_sources.intersection_update(contrib_map.keys())
 
         if LockMode.BLOCK_OCCUPIED in next_lock_modes:
             contrib_map.clear()
+            exit_grace_sources.clear()
             suspended_map.clear()
             next_is_occupied = False
         else:
@@ -266,7 +281,11 @@ class OccupancyEngine:
         next_state = LocationRuntimeState(
             is_occupied=next_is_occupied,
             contributions=frozenset(
-                SourceContribution(source_id=sid, expires_at=exp)
+                SourceContribution(
+                    source_id=sid,
+                    expires_at=exp,
+                    exit_grace=sid in exit_grace_sources,
+                )
                 for sid, exp in sorted(contrib_map.items())
             ),
             suspended_contributions=frozenset(
@@ -366,6 +385,7 @@ class OccupancyEngine:
                     {
                         "source_id": c.source_id,
                         "expires_at": c.expires_at.isoformat() if c.expires_at else None,
+                        **({"exit_grace": True} if c.exit_grace else {}),
                     }
                     for c in sorted(state.contributions, key=lambda x: x.source_id)
                 ],
@@ -439,7 +459,14 @@ class OccupancyEngine:
                 if expires_at and expires_at < now - max_age:
                     continue
 
-                contributions.append(SourceContribution(source_id=source_id, expires_at=expires_at))
+                exit_grace = bool(raw.get("exit_grace"))
+                contributions.append(
+                    SourceContribution(
+                        source_id=source_id,
+                        expires_at=expires_at,
+                        exit_grace=exit_grace,
+                    )
+                )
 
             suspended: list[SuspendedContribution] = []
             for raw in data.get("suspended_contributions", []):
@@ -596,10 +623,16 @@ class OccupancyEngine:
         return {directive.source_id: directive for directive in directives}
 
     @staticmethod
-    def _contrib_map(
+    def _split_contributions(
         contributions: set[SourceContribution] | frozenset[SourceContribution],
-    ) -> dict[str, datetime | None]:
-        return {c.source_id: c.expires_at for c in contributions}
+    ) -> tuple[dict[str, datetime | None], set[str]]:
+        expires: dict[str, datetime | None] = {}
+        exit_grace_ids: set[str] = set()
+        for c in contributions:
+            expires[c.source_id] = c.expires_at
+            if c.exit_grace:
+                exit_grace_ids.add(c.source_id)
+        return expires, exit_grace_ids
 
     @staticmethod
     def _suspended_map(
@@ -608,10 +641,15 @@ class OccupancyEngine:
         return {c.source_id: c.remaining for c in suspended}
 
     @staticmethod
-    def _drop_expired(contrib_map: dict[str, datetime | None], now: datetime) -> None:
+    def _drop_expired_contribs(
+        contrib_map: dict[str, datetime | None],
+        exit_grace_sources: set[str],
+        now: datetime,
+    ) -> None:
         expired = [sid for sid, exp in contrib_map.items() if exp is not None and exp <= now]
         for sid in expired:
             contrib_map.pop(sid, None)
+            exit_grace_sources.discard(sid)
 
     @staticmethod
     def _resume_contributions(

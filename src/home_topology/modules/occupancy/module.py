@@ -147,13 +147,13 @@ class OccupancyModule(LocationModule):
             )
 
         for entry in raw_entries:
-            authority_id = self._group_authority_by_member.get(entry["id"])
-            if authority_id is not None:
+            member_authority_id = self._group_authority_by_member.get(entry["id"])
+            if member_authority_id is not None:
                 configs.append(
                     LocationConfig(
                         id=entry["id"],
-                        parent_id=authority_id,
-                        occupancy_group_id=self._group_id_by_authority.get(authority_id),
+                        parent_id=member_authority_id,
+                        occupancy_group_id=self._group_id_by_authority.get(member_authority_id),
                         occupancy_strategy=OccupancyStrategy.FOLLOW_PARENT,
                         contributes_to_parent=False,
                         default_timeout=int(entry["default_timeout"]),
@@ -177,7 +177,9 @@ class OccupancyModule(LocationModule):
         for authority_id, member_ids in sorted(self._group_members_by_authority.items()):
             parent_ids = grouped_parent_ids.get(authority_id, set())
             authority_parent_id = next(iter(parent_ids)) if len(parent_ids) == 1 else None
-            default_timeout, default_trailing_timeout = grouped_defaults.get(authority_id, (300, 120))
+            default_timeout, default_trailing_timeout = grouped_defaults.get(
+                authority_id, (300, 120)
+            )
             configs.append(
                 LocationConfig(
                     id=authority_id,
@@ -260,6 +262,17 @@ class OccupancyModule(LocationModule):
         if self._loc_manager and self._loc_manager.get_location(location_id) is None:
             logger.warning("Ignoring occupancy.signal for unknown location: %s", location_id)
             return None
+
+        # Integration contract: configured HA "off" with zero trailing vacates the whole room.
+        if (
+            bool(payload.get("authoritative_vacant"))
+            and event_type == EventType.CLEAR
+            and timeout_set
+            and timeout == 0
+        ):
+            event_type = EventType.VACATE
+            timeout_set = False
+            timeout = None
 
         resolved_location_id, resolved_source_id, timeout, timeout_set, lock_scope = (
             self._resolve_group_event(
@@ -806,7 +819,9 @@ class OccupancyModule(LocationModule):
         resolved_timeout = timeout
         resolved_timeout_set = timeout_set
         if not timeout_set and event_type == EventType.TRIGGER:
-            resolved_timeout = int(self._config_for_location(location_id).get("default_timeout", 300))
+            resolved_timeout = int(
+                self._config_for_location(location_id).get("default_timeout", 300)
+            )
             resolved_timeout_set = True
         elif not timeout_set and event_type == EventType.CLEAR:
             resolved_timeout = int(
@@ -900,6 +915,8 @@ class OccupancyModule(LocationModule):
             "source_id": contribution.source_id,
             "expires_at": contribution.expires_at.isoformat() if contribution.expires_at else None,
         }
+        if getattr(contribution, "exit_grace", False):
+            item["exit_grace"] = True
         parsed = self._parse_group_member_source_id(contribution.source_id)
         if parsed is not None:
             origin_location_id, origin_source_id = parsed

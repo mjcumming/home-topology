@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-11
+
+### Added
+
+- `occupancy.signal` payload `authoritative_vacant` with `clear` + `timeout=0`:
+  integration maps configured HA “immediate off” to a **whole-location vacate**.
+- `SourceContribution.exit_grace`: timed holds created from **CLEAR with trailing > 0**
+  are cancelled when **any TRIGGER** arrives for that location (rescues scheduled
+  vacancy when new occupancy evidence appears).
+
 ## [1.0.2] - 2026-04-06
 
 ### Added

@@ -71,6 +71,9 @@ class SourceContribution:
 
     source_id: str
     expires_at: datetime | None  # None = indefinite
+    # True when this timed hold comes from CLEAR with trailing > 0 (scheduled vacancy).
+    # Any TRIGGER at this location cancels all exit-grace rows (see OccupancyEngine).
+    exit_grace: bool = False
 
 
 @dataclass(frozen=True)
