@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "home-topology"
-version = "1.0.3"
+version = "1.0.4"
 description = "A platform-agnostic home topology kernel for modeling spaces and attaching behavior modules"
 readme = "README.md"
 requires-python = ">=3.12"

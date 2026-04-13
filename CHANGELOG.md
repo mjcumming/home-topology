@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-04-13
+
+### Added
+
+- `AmbientLightModule` optional `extra_lux_entity_ids` callback so integrations can
+  supply additional illuminance candidates after config / `entity_ids` resolution
+  (used for managed-shadow child locations on structure hosts).
+- `AmbientLightModule.invalidate_ambient_sensor_cache()` to drop cached per-location
+  lux resolution when topology entity membership changes.
+
 ## [1.0.3] - 2026-04-11
 
 ### Added

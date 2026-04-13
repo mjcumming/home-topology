@@ -6,6 +6,7 @@ and automatic fallback strategies.
 """
 
 import logging
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional, cast
 
@@ -33,14 +34,22 @@ class AmbientLightModule(LocationModule):
 
     CURRENT_CONFIG_VERSION = 1
 
-    def __init__(self, platform_adapter: Any = None) -> None:
+    def __init__(
+        self,
+        platform_adapter: Any = None,
+        extra_lux_entity_ids: Callable[[str], Sequence[str]] | None = None,
+    ) -> None:
         """
         Initialize ambient light module.
 
         Args:
             platform_adapter: Platform adapter for sensor access
+            extra_lux_entity_ids: Optional callback ``(location_id) -> entity_ids`` so
+                integrations can supply additional lux candidates (e.g. managed shadow
+                child locations) after normal ``entity_ids`` / config resolution.
         """
         self._platform = platform_adapter
+        self._extra_lux_entity_ids = extra_lux_entity_ids
         self._bus: Optional["EventBus"] = None
         self._location_manager: Optional["LocationManager"] = None
         self._sensor_cache: Dict[str, Optional[str]] = {}  # location_id → sensor_id
@@ -372,9 +381,38 @@ class AmbientLightModule(LocationModule):
                         self._sensor_cache[location_id] = entity_id
                         return entity_id
 
+        for entity_id in self._lux_entity_ids_from_integration_hook(location_id):
+            if self._is_lux_sensor(entity_id):
+                self._sensor_cache[location_id] = entity_id
+                return entity_id
+
         # Not found
         self._sensor_cache[location_id] = None
         return None
+
+    def invalidate_ambient_sensor_cache(self, location_id: str | None = None) -> None:
+        """Clear cached lux sensor resolution for one location or all locations."""
+        if location_id is None:
+            self._sensor_cache.clear()
+        else:
+            self._sensor_cache.pop(location_id, None)
+
+    def _lux_entity_ids_from_integration_hook(self, location_id: str) -> list[str]:
+        resolver = self._extra_lux_entity_ids
+        if resolver is None:
+            return []
+        try:
+            seq = resolver(location_id)
+        except Exception:  # pragma: no cover - integration callback defensive
+            logger.exception("extra_lux_entity_ids failed for %s", location_id)
+            return []
+        if not seq:
+            return []
+        out: list[str] = []
+        for item in seq:
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+        return out
 
     def _is_lux_sensor(self, entity_id: str) -> bool:
         """

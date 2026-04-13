@@ -236,6 +236,58 @@ class TestSensorDetection:
         sensor = attached_ambient_module._find_lux_sensor_for_location("kitchen")
         assert sensor == "sensor.kitchen_lux_2"
 
+    def test_extra_lux_entity_ids_used_when_auto_discover_disabled(
+        self, platform_adapter, event_bus
+    ):
+        """Integration hook can supply lux sensors (e.g. managed shadow) without auto_discover."""
+        mgr = LocationManager()
+        mgr.create_location(id="prop_q", name="Queen", parent_id=None)
+        mgr.create_location(id="shadow_a", name="Queen System", parent_id="prop_q")
+        mgr.set_module_config(
+            "prop_q",
+            "_meta",
+            {"type": "property", "shadow_area_id": "shadow_a"},
+        )
+        mgr.set_module_config(
+            "prop_q",
+            "ambient",
+            {
+                "auto_discover": False,
+                "inherit_from_parent": True,
+                "fallback_to_sun": True,
+            },
+        )
+        mgr.add_entity_to_location("sensor.queen_illuminance", "shadow_a")
+
+        def extra(location_id: str):
+            if location_id != "prop_q":
+                return ()
+            shadow = mgr.get_location("shadow_a")
+            return tuple(shadow.entity_ids) if shadow else ()
+
+        module = AmbientLightModule(
+            platform_adapter=platform_adapter,
+            extra_lux_entity_ids=extra,
+        )
+        module.attach(event_bus, mgr)
+        platform_adapter.get_device_class.return_value = "illuminance"
+        platform_adapter.get_numeric_state.return_value = 333.0
+
+        reading = module.get_ambient_light("prop_q")
+        assert reading.source_sensor == "sensor.queen_illuminance"
+        assert reading.lux == 333.0
+        assert reading.is_inherited is False
+
+    def test_invalidate_ambient_sensor_cache(self, platform_adapter, event_bus, loc_manager):
+        """invalidate_ambient_sensor_cache clears stale _find_lux_sensor_for_location results."""
+        loc_manager.add_entity_to_location("sensor.kitchen_lux", "kitchen")
+        module = AmbientLightModule(platform_adapter=platform_adapter)
+        module.attach(event_bus, loc_manager)
+        assert module._find_lux_sensor_for_location("kitchen") == "sensor.kitchen_lux"
+        loc_manager.remove_entities_from_location(["sensor.kitchen_lux"])
+        module.invalidate_ambient_sensor_cache("kitchen")
+        assert module._find_lux_sensor_for_location("kitchen") is None
+
 
 # =============================================================================
 # Hierarchical Lookup Tests
