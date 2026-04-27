@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-04-27
+
+### Added
+
+- **Structured occupancy explanations**: public occupancy state payloads now
+  include an `explanation` object with current-state `basis`, active `held_by`
+  provenance, optional `projected_from`, lock/suspended-hold metadata, and
+  `latest_transition` cause details. This keeps UI integrations from having to
+  infer grouped/rolled-up occupancy reasons from raw contribution ids.
+
 ## [1.0.4] - 2026-04-13
 
 ### Added

@@ -307,6 +307,9 @@ class OccupancyEngine:
                 previous_state=current_state,
                 new_state=next_state,
                 reason=self._reason_for(event, propagated_from_child, propagated_parent),
+                event=event,
+                propagated_from_child=propagated_from_child,
+                propagated_parent=propagated_parent,
             )
         )
         return True

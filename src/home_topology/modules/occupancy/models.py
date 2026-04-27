@@ -134,6 +134,9 @@ class StateTransition:
     previous_state: LocationRuntimeState
     new_state: LocationRuntimeState
     reason: str
+    event: OccupancyEvent | None = None
+    propagated_from_child: str | None = None
+    propagated_parent: bool = False
 
 
 @dataclass(frozen=True)

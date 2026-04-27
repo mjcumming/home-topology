@@ -37,6 +37,7 @@ class OccupancyModule(LocationModule):
         self._group_authority_by_member: dict[str, str] = {}
         self._group_members_by_authority: dict[str, list[str]] = {}
         self._group_id_by_authority: dict[str, str] = {}
+        self._last_transition_by_location: dict[str, dict[str, Any]] = {}
 
     @property
     def id(self) -> str:
@@ -353,11 +354,19 @@ class OccupancyModule(LocationModule):
         """Emit semantic occupancy.changed event."""
         assert self._bus is not None
         location_id = transition.location_id
+        event_timestamp = datetime.now(UTC)
         if self._is_group_authority_location(location_id):
             for member_id in self._group_members_by_authority.get(location_id, []):
+                latest_transition = self._serialize_transition_explanation(
+                    transition,
+                    public_location_id=member_id,
+                    changed_at=event_timestamp,
+                )
+                self._last_transition_by_location[member_id] = latest_transition
                 payload = self._serialize_public_state(
                     member_id,
                     state_override=transition.new_state,
+                    latest_transition=latest_transition,
                 )
                 payload["previous_occupied"] = (
                     transition.previous_state.is_occupied if transition.previous_state else False
@@ -369,7 +378,7 @@ class OccupancyModule(LocationModule):
                         source="occupancy",
                         location_id=member_id,
                         payload=payload,
-                        timestamp=datetime.now(UTC),
+                        timestamp=event_timestamp,
                     )
                 )
             return
@@ -377,9 +386,16 @@ class OccupancyModule(LocationModule):
         if location_id in self._group_authority_by_member:
             return
 
+        latest_transition = self._serialize_transition_explanation(
+            transition,
+            public_location_id=location_id,
+            changed_at=event_timestamp,
+        )
+        self._last_transition_by_location[location_id] = latest_transition
         payload = self._serialize_public_state(
             location_id,
             state_override=transition.new_state,
+            latest_transition=latest_transition,
         )
         payload["previous_occupied"] = (
             transition.previous_state.is_occupied if transition.previous_state else False
@@ -392,7 +408,7 @@ class OccupancyModule(LocationModule):
                 source="occupancy",
                 location_id=location_id,
                 payload=payload,
-                timestamp=datetime.now(UTC),
+                timestamp=event_timestamp,
             )
         )
 
@@ -872,6 +888,7 @@ class OccupancyModule(LocationModule):
         location_id: str,
         *,
         state_override: Any,
+        latest_transition: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         authority_id = self._group_authority_by_member.get(location_id)
         occupancy_group_id: str | None = None
@@ -904,7 +921,204 @@ class OccupancyModule(LocationModule):
                 )
             ],
             "occupancy_group_id": occupancy_group_id,
+            "explanation": self._build_public_explanation(
+                location_id,
+                state_override=state_override,
+                occupancy_group_id=occupancy_group_id,
+                latest_transition=latest_transition,
+            ),
         }
+
+    def _build_public_explanation(
+        self,
+        location_id: str,
+        *,
+        state_override: Any,
+        occupancy_group_id: str | None,
+        latest_transition: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """Build a machine-readable explanation for the current occupancy state."""
+        authority_id = self._group_authority_by_member.get(location_id)
+        holders = [
+            self._serialize_explanation_holder(contribution, occupancy_group_id)
+            for contribution in sorted(state_override.contributions, key=lambda c: c.source_id)
+        ]
+        suspended_holds = [
+            self._serialize_suspended_contribution(contribution, occupancy_group_id)
+            for contribution in sorted(
+                state_override.suspended_contributions,
+                key=lambda c: c.source_id,
+            )
+        ]
+
+        if state_override.is_occupied and not holders and state_override.is_locked:
+            holders.append(
+                {
+                    "kind": "lock",
+                    "locked_by": list(state_override.locked_by),
+                    "lock_modes": [
+                        mode.value
+                        for mode in sorted(state_override.lock_modes, key=lambda m: m.value)
+                    ],
+                }
+            )
+
+        explanation: dict[str, Any] = {
+            "version": 1,
+            "basis": self._explanation_basis(
+                state_override,
+                authority_id=authority_id,
+            ),
+            "held_by": holders if state_override.is_occupied else [],
+        }
+
+        projected_from = self._projected_from(location_id, authority_id, occupancy_group_id)
+        if projected_from is not None:
+            explanation["projected_from"] = projected_from
+
+        transition = latest_transition or self._last_transition_by_location.get(location_id)
+        if transition is not None:
+            explanation["latest_transition"] = transition
+
+        if state_override.is_locked:
+            explanation["locks"] = {
+                "locked_by": list(state_override.locked_by),
+                "lock_modes": [
+                    mode.value for mode in sorted(state_override.lock_modes, key=lambda m: m.value)
+                ],
+                "direct_locks": [
+                    self._serialize_lock(lock, occupancy_group_id)
+                    for lock in sorted(
+                        state_override.direct_locks,
+                        key=lambda lock: (lock.source_id, lock.mode.value, lock.scope.value),
+                    )
+                ],
+            }
+
+        if suspended_holds:
+            explanation["suspended_holds"] = suspended_holds
+
+        return explanation
+
+    def _explanation_basis(self, state: Any, *, authority_id: str | None) -> str:
+        """Return the current-state basis code for an explanation."""
+        if not state.is_occupied:
+            return "no_active_holds"
+        if authority_id is not None:
+            return "occupancy_group"
+
+        source_ids = {contribution.source_id for contribution in state.contributions}
+        if any(source_id.startswith("__child__:") for source_id in source_ids):
+            return "child_rollup"
+        if any(source_id.startswith("__follow_parent__:") for source_id in source_ids):
+            return "follow_parent"
+        if any(source_id.startswith("__lock_hold__:") for source_id in source_ids):
+            return "lock_hold"
+        if not source_ids and state.is_locked:
+            return "lock_freeze"
+        if source_ids:
+            return "direct"
+        return "retained_state"
+
+    def _projected_from(
+        self,
+        location_id: str,
+        authority_id: str | None,
+        occupancy_group_id: str | None,
+    ) -> Dict[str, Any] | None:
+        """Return projection metadata for public locations backed by runtime authority."""
+        if authority_id is None:
+            return None
+        return {
+            "kind": "occupancy_group",
+            "group_id": occupancy_group_id,
+            "authority_location_id": authority_id,
+            "members": list(self._group_members_by_authority.get(authority_id, [location_id])),
+        }
+
+    def _serialize_explanation_holder(
+        self,
+        contribution: Any,
+        occupancy_group_id: str | None,
+    ) -> Dict[str, Any]:
+        """Serialize one active holder with stable provenance fields."""
+        item = self._serialize_contribution(contribution, occupancy_group_id)
+        source_id = contribution.source_id
+        item["kind"] = "source"
+
+        if source_id.startswith("__child__:"):
+            item["kind"] = "child"
+            item["origin_location_id"] = source_id[len("__child__:") :]
+        elif source_id.startswith("__follow_parent__:"):
+            item["kind"] = "parent"
+            item["origin_location_id"] = source_id[len("__follow_parent__:") :]
+        elif source_id.startswith("__lock_hold__:"):
+            item["kind"] = "lock_hold"
+            item["origin_location_id"] = source_id[len("__lock_hold__:") :]
+
+        parsed = self._parse_group_member_source_id(source_id)
+        if parsed is not None:
+            origin_location_id, origin_source_id = parsed
+            item["kind"] = "source"
+            item["origin_location_id"] = origin_location_id
+            item["origin_source_id"] = origin_source_id
+            item["via_occupancy_group"] = occupancy_group_id
+
+        return item
+
+    def _serialize_transition_explanation(
+        self,
+        transition: Any,
+        *,
+        public_location_id: str,
+        changed_at: datetime,
+    ) -> Dict[str, Any]:
+        """Serialize the latest transition with cause and source provenance."""
+        item: dict[str, Any] = {
+            "event": "occupied" if transition.new_state.is_occupied else "vacant",
+            "previous_occupied": (
+                transition.previous_state.is_occupied if transition.previous_state else False
+            ),
+            "reason": transition.reason,
+            "cause": self._transition_cause(transition.reason),
+            "location_id": public_location_id,
+            "changed_at": changed_at.isoformat(),
+        }
+
+        cause_event = getattr(transition, "event", None)
+        if cause_event is not None:
+            item["signal_event"] = cause_event.event_type.value
+            item["source_id"] = cause_event.source_id
+            item["runtime_location_id"] = cause_event.location_id
+            parsed = self._parse_group_member_source_id(cause_event.source_id)
+            if parsed is not None:
+                origin_location_id, origin_source_id = parsed
+                item["origin_location_id"] = origin_location_id
+                item["origin_source_id"] = origin_source_id
+                item["via_occupancy_group"] = self._group_id_by_authority.get(
+                    cause_event.location_id
+                )
+
+        propagated_from_child = getattr(transition, "propagated_from_child", None)
+        if propagated_from_child:
+            item["origin_location_id"] = propagated_from_child
+        if getattr(transition, "propagated_parent", False):
+            item["projected_from_parent"] = True
+
+        return item
+
+    @staticmethod
+    def _transition_cause(reason: str) -> str:
+        """Normalize a transition reason string to a stable cause code."""
+        if reason.startswith("event:"):
+            return reason.split(":", 1)[1] or "event"
+        if reason.startswith("propagation:child:"):
+            return "child"
+        if reason == "propagation:parent":
+            return "parent"
+        if reason == "timeout":
+            return "timeout"
+        return reason or "unknown"
 
     def _serialize_contribution(
         self,

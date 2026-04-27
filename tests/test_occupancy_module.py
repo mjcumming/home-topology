@@ -200,6 +200,16 @@ def test_grouped_members_share_state_and_timeout(
         and contribution.get("via_occupancy_group") == "main_open_area"
         for contribution in dining["contributions"]
     )
+    dining_explanation = dining["explanation"]
+    assert dining_explanation["basis"] == "occupancy_group"
+    assert dining_explanation["projected_from"]["kind"] == "occupancy_group"
+    assert set(dining_explanation["projected_from"]["members"]) == {"kitchen", "dining_room"}
+    assert any(
+        holder.get("origin_location_id") == "kitchen"
+        and holder.get("origin_source_id") == "motion"
+        and holder.get("via_occupancy_group") == "main_open_area"
+        for holder in dining_explanation["held_by"]
+    )
 
     occupancy_module.check_timeouts(t0 + timedelta(seconds=61))
     kitchen_after = occupancy_module.get_location_state("kitchen")
@@ -308,10 +318,17 @@ def test_occupancy_changed_payload_contains_contributions(
     occupancy_module.trigger("kitchen", "motion", timeout=60, now=now)
 
     assert emitted
-    payload = emitted[-1].payload
+    kitchen_event = next(event for event in emitted if event.location_id == "kitchen")
+    payload = kitchen_event.payload
     assert payload is not None
     assert "contributions" in payload
     assert "active_holds" not in payload
+    assert payload["explanation"]["basis"] == "direct"
+    assert payload["explanation"]["latest_transition"]["cause"] == "trigger"
+    assert any(
+        holder.get("kind") == "source" and holder.get("source_id") == "motion"
+        for holder in payload["explanation"]["held_by"]
+    )
 
 
 def test_public_api_rejects_negative_timeout(occupancy_module: OccupancyModule) -> None:
