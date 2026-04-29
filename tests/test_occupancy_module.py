@@ -323,11 +323,15 @@ def test_occupancy_changed_payload_contains_contributions(
     assert payload is not None
     assert "contributions" in payload
     assert "active_holds" not in payload
-    assert payload["explanation"]["basis"] == "direct"
-    assert payload["explanation"]["latest_transition"]["cause"] == "trigger"
+    # Bus publish payload is lean; explanation is built lazily via get_location_state.
+    assert "explanation" not in payload
+    state = occupancy_module.get_location_state("kitchen")
+    assert state is not None
+    assert state["explanation"]["basis"] == "direct"
+    assert state["explanation"]["latest_transition"]["cause"] == "trigger"
     assert any(
         holder.get("kind") == "source" and holder.get("source_id") == "motion"
-        for holder in payload["explanation"]["held_by"]
+        for holder in state["explanation"]["held_by"]
     )
 
 

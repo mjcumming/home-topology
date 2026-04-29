@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-04-29
+
+### Changed
+
+- **Lazy occupancy explanation**: `occupancy.changed` event payloads no longer
+  include the structured `explanation` object. Building it required sorted
+  iteration of contributions, suspended holds, lock detail, and holder kind
+  classification on every transition (and once per group member for occupancy
+  groups), adding measurable latency to the trigger→subscriber edge that
+  downstream integrations use to flip occupancy entities.
+  `get_location_state(location_id)` still returns the full explanation, so
+  panels / inspectors fetching state on demand are unchanged. Integrations
+  that need the explanation alongside a bus event should call
+  `get_location_state(event.location_id)` from the subscriber.
+
 ## [1.0.5] - 2026-04-27
 
 ### Added

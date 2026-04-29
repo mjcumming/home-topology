@@ -366,7 +366,7 @@ class OccupancyModule(LocationModule):
                 payload = self._serialize_public_state(
                     member_id,
                     state_override=transition.new_state,
-                    latest_transition=latest_transition,
+                    include_explanation=False,
                 )
                 payload["previous_occupied"] = (
                     transition.previous_state.is_occupied if transition.previous_state else False
@@ -395,7 +395,7 @@ class OccupancyModule(LocationModule):
         payload = self._serialize_public_state(
             location_id,
             state_override=transition.new_state,
-            latest_transition=latest_transition,
+            include_explanation=False,
         )
         payload["previous_occupied"] = (
             transition.previous_state.is_occupied if transition.previous_state else False
@@ -889,13 +889,14 @@ class OccupancyModule(LocationModule):
         *,
         state_override: Any,
         latest_transition: Dict[str, Any] | None = None,
+        include_explanation: bool = True,
     ) -> Dict[str, Any]:
         authority_id = self._group_authority_by_member.get(location_id)
         occupancy_group_id: str | None = None
         if authority_id is not None:
             occupancy_group_id = self._group_id_by_authority.get(authority_id)
 
-        return {
+        payload: Dict[str, Any] = {
             "occupied": state_override.is_occupied,
             "locked_by": list(state_override.locked_by),
             "is_locked": state_override.is_locked,
@@ -921,13 +922,15 @@ class OccupancyModule(LocationModule):
                 )
             ],
             "occupancy_group_id": occupancy_group_id,
-            "explanation": self._build_public_explanation(
+        }
+        if include_explanation:
+            payload["explanation"] = self._build_public_explanation(
                 location_id,
                 state_override=state_override,
                 occupancy_group_id=occupancy_group_id,
                 latest_transition=latest_transition,
-            ),
-        }
+            )
+        return payload
 
     def _build_public_explanation(
         self,
