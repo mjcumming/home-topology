@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-05-14
+
+### Added
+
+- **Group authority transition logging**: `OccupancyModule._emit_occupancy_changed`
+  now emits an INFO-level log line whenever a group authority location flips
+  vacant↔occupied. The line includes the transition reason and the
+  added/removed source IDs on the authority, which makes it possible to attribute
+  a "phantom re-occupy" of an occupancy group to a specific contributing source
+  without instrumenting downstream integrations.
+
 ## [1.0.6] - 2026-04-29
 
 ### Changed

@@ -356,6 +356,33 @@ class OccupancyModule(LocationModule):
         location_id = transition.location_id
         event_timestamp = datetime.now(UTC)
         if self._is_group_authority_location(location_id):
+            prev_occupied = (
+                transition.previous_state.is_occupied if transition.previous_state else False
+            )
+            next_occupied = transition.new_state.is_occupied
+            if prev_occupied != next_occupied and logger.isEnabledFor(logging.INFO):
+                new_contribs = sorted(
+                    c.source_id for c in transition.new_state.contributions
+                )
+                prev_contribs = sorted(
+                    c.source_id
+                    for c in (
+                        transition.previous_state.contributions
+                        if transition.previous_state
+                        else []
+                    )
+                )
+                added = [sid for sid in new_contribs if sid not in prev_contribs]
+                removed = [sid for sid in prev_contribs if sid not in new_contribs]
+                logger.info(
+                    "group authority %s %s -> %s reason=%s added_sources=%s removed_sources=%s",
+                    location_id,
+                    "occupied" if prev_occupied else "vacant",
+                    "occupied" if next_occupied else "vacant",
+                    transition.reason,
+                    added or "-",
+                    removed or "-",
+                )
             for member_id in self._group_members_by_authority.get(location_id, []):
                 latest_transition = self._serialize_transition_explanation(
                     transition,
